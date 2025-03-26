@@ -9,7 +9,7 @@ device: 'cuda'
 # GENERATE
 source_prompt: 'man with a mustach and a hat, fauvism' # CHANGE HERE, MAKE SURE IT CONTAINS THE BASE WORD
 base_condition: 'man' # CHANGE HERE
-source_neg_prompt: ''
+neg_prompt: ''
 steps: 30
 guidance_scale: 7.5
 g_seed: 6543

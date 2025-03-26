@@ -47,7 +47,7 @@ if __name__ == '__main__':
         ENV_CONFIGS = json.load(f)
     # get user configs
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config_path', type=str, default='config/gen_tune.yaml')
+    parser.add_argument('--config_path', type=str, default='config/gen_tune_inference.yaml')
     opt = parser.parse_args()
     with open(opt.config_path, "r") as f:
         config = yaml.safe_load(f)
@@ -63,7 +63,7 @@ if __name__ == '__main__':
     # copy the config
     shutil.copyfile(opt.config_path, data_root+'/config.yaml')
     # use original pipeline to prepare data
-    image, xt_list_, prompt_embeds, mid_ = pipeline(prompt, neg_prompt=config['neg_prompt'], 
+    image, xt_list_, prompt_embeds, mid_ = pipeline(prompt, neg_prompt=config['source_neg_prompt'], 
                                                     num_inference_steps=steps, guidance_scale=guidance_scale, generator=generator,
                                                     oneactor_save=True)
     # save the target image
@@ -81,7 +81,7 @@ if __name__ == '__main__':
         os.makedirs(data_root+'/base', exist_ok=True)
         mid_last_base = []
         for i in range(num_base):
-            image, xt_list_, prompt_embeds, mid_ = pipeline(prompt, neg_prompt=config['neg_prompt'],
+            image, xt_list_, prompt_embeds, mid_ = pipeline(prompt, neg_prompt=config['source_neg_prompt'],
                                                             num_inference_steps=steps, guidance_scale=guidance_scale, generator=generator,
                                                             oneactor_save=True)
             image = image.images[0]

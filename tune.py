@@ -281,7 +281,7 @@ def main():
         ENV_CONFIGS = json.load(f)
     # get user configs
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config_path', type=str, default='./config/gen_tune.yaml')
+    parser.add_argument('--config_path', type=str, default='./config/gen_tune_inference.yaml')
     args = parser.parse_args()
     with open(args.config_path, "r") as f:
         config = yaml.safe_load(f)
@@ -308,8 +308,8 @@ def main():
         diffusers.utils.logging.set_verbosity_error()
 
     # If passed along, set the training seed now.
-    if config['seed'] is not None:
-        set_seed(config['seed'])
+    if config['t_seed'] is not None:
+        set_seed(config['t_seed'])
 
     # Handle the repository creation
     if accelerator.is_main_process:

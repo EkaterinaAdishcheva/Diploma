@@ -1,13 +1,18 @@
 data_root: './data/demo'
 pretrain_root: './output/demo'
 out_file: '/inference'
-prompt : 'Soft dark light, a hobbit wearing robes, eating breakfast' # CHANGE HERE, MAKE SURE IT CONTAINS THE BASE WORD
-base: 'hobbit'  # CHANGE HERE
-neg_prompt: ''
+
+base: 'man'
+prompt: 'man with a mustach and a hat, fauvism'
+add_prompts: ['in the park', 'reading a book', 'at the beach', 'holding an avacado']
+neg_prompts: ['', '', '', '']
+file_names: ['a_man_with_a_mustach_and_a_hat_fauvism_in_the_park', 'a_man_with_a_mustach_and_a_hat_fauvism_reading_a_book',      
+    'a_man_with_a_mustach_and_a_hat_fauvism_at_the_beach', 'a_man_with_a_mustach_and_a_hat_fauvism_holding_an_avacado']
+
 seed: 23018
 inference_steps: 30
 select_steps: [1,20]  # appplying cluster guidance to these steps
-only_step: 200  # type in a specific step (Recommended) or set to 'best'
+only_step: [100, 200]  # type in a specific step (Recommended) or set to 'best'
 
 v: 0.8 # semantic interpolation scales
 eta_1: 7.5  # target attraction scale

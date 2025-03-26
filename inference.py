@@ -45,7 +45,7 @@ def main():
     with open("PATH.json","r") as f:
         ENV_CONFIGS = json.load(f)
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config_path', type=str, default='./config/inference.yaml')
+    parser.add_argument('--config_path', type=str, default='./config/gen_tune_inference.yaml')
     args = parser.parse_args()
     # load config
     with open(args.config_path, "r") as f:
@@ -68,13 +68,15 @@ def main():
 
     # iterate over image list
     for img_num in range(len(config['add_prompts'])):
+        _str = config['prompt'] + " " + config['add_prompts'][img_num]
+        print(f"Generating prompt {_str}...")
         # original output by SDXL
         generator = torch.manual_seed(config['seed'])
         image = pipeline(
-            config['prompt'] + " " + config['add_prompts'][img_num], negative_prompt=config['neg_prompt'][img_num],
+            config['prompt'] + " " + config['add_prompts'][img_num], negative_prompt=config['neg_prompts'][img_num],
             num_inference_steps=config['inference_steps'], guidance_scale=config['eta_1'], generator=generator)
         image = image.images[0]
-        image.save(out_root+'/original_'+config['file_name'][img_num]+'_sdxl.jpg')
+        image.save(out_root+'/original_'+config['file_names'][img_num]+'_sdxl.jpg')
 
         # perform step-wise guidance
         select_steps = config['select_steps']
@@ -97,9 +99,10 @@ def main():
         if config['only_step'] is False:
             for i in range(50):
                 steps = config['step_from']+config['step']*(i)
-                
-                projector_path = config['pretrain_root'] + f'/weight/learned-projector-steps-{steps}.pth'
-                delta_emb_all = projector_inference(projector_path, h_tar, h_base, config['device']).to(config['device'])
+                print(f"Using weights from step (steps)")
+                with torch.no_grad():
+                    projector_path = config['pretrain_root'] + f'/weight/learned-projector-steps-{steps}.pth'
+                    delta_emb_all = projector_inference(projector_path, h_tar, h_base, config['device']).to(config['device'])
 
                 delta_emb_aver = delta_emb_all[:-1].mean(dim=0)
                 delta_emb_tar = config['v'] * delta_emb_all[-1]
@@ -115,13 +118,14 @@ def main():
                 image = pipeline_inference(
                     pipeline, 
                     config['prompt'] + " " + config['add_prompts'][img_num],
-                    config['neg_prompt'][img_num],
+                    config['neg_prompts'][img_num],
                     config, oneactor_extra_config)
                 image = image.images[0]
-                image.save(out_root+f'/OneActor_'+config['file_name'][img_num]+'_step_'+steps+'.jpg')
+                image.save(out_root+f'/OneActor_'+config['file_names'][img_num]+'_step_'+str(steps)+'.jpg')
         elif config['only_step'] == 'best':
-            projector_path = config['pretrain_root'] + f'/weight/best-learned-projector.pth'
-            delta_emb_all = projector_inference(projector_path, h_tar, h_base, config['device']).to(config['device'])
+            with torch.no_grad():
+                projector_path = config['pretrain_root'] + f'/weight/best-learned-projector.pth'
+                delta_emb_all = projector_inference(projector_path, h_tar, h_base, config['device']).to(config['device'])
 
             delta_emb_aver = delta_emb_all[:-1].mean(dim=0) # [2048]
             delta_emb_tar = config['v'] * delta_emb_all[-1] # [2048]
@@ -136,13 +140,14 @@ def main():
             image = pipeline_inference(
                 pipeline,
                 config['prompt'] + " " + config['add_prompts'][img_num],
-                config['neg_prompt'][img_num],
+                config['neg_prompts'][img_num],
                 config, oneactor_extra_config)
             image = image.images[0]
-            image.save(out_root+f'/OneActor_'+config['file_name'][img_num]+'_step_'+'best'+'.jpg')
+            image.save(out_root+f'/OneActor_'+config['file_names'][img_num]+'_step_'+'best'+'.jpg')
         else:
             steps_list = config['only_step']
-            for staps in steps_list:   
+            for steps in steps_list:
+                print(f"Using weights from step {steps}")
                 with torch.no_grad():
                     projector_path = config['pretrain_root'] + f'/weight/learned-projector-steps-{steps}.pth'
                     delta_emb_all = projector_inference(projector_path, h_tar, h_base, config['device']).to(config['device'])
@@ -160,10 +165,10 @@ def main():
                 image = pipeline_inference(
                     pipeline, 
                     config['prompt'] + " " + config['add_prompts'][img_num],
-                    config['neg_prompt'][img_num],
+                    config['neg_prompts'][img_num],
                     config, oneactor_extra_config)
                 image = image.images[0]
-                image.save(out_root+f'/OneActor_'+config['file_name'][img_num]+'_step_'+steps+'.jpg')
+                image.save(out_root+f'/OneActor_'+config['file_names'][img_num]+'_step_'+str(steps)+'.jpg')
 
 if __name__ == '__main__':
     main()
