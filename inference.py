@@ -52,7 +52,7 @@ def main():
         config = yaml.safe_load(f)
 
     # make dir and initialize
-    out_root = config['pretrain_root'] + config['out_file']
+    out_root = config['pretrain_root']  +'/'+config['dir_name'] + config['out_file']
     os.makedirs(out_root, exist_ok=True)
 
     shutil.copyfile(args.config_path, out_root+'/gen_config.yaml')
@@ -101,7 +101,7 @@ def main():
                 steps = config['step_from']+config['step']*(i)
                 print(f"Using weights from step (steps)")
                 with torch.no_grad():
-                    projector_path = config['pretrain_root'] + f'/weight/learned-projector-steps-{steps}.pth'
+                    projector_path = config['pretrain_root'] +'/'+config['dir_name'] + f'/weight/learned-projector-steps-{steps}.pth'
                     delta_emb_all = projector_inference(projector_path, h_tar, h_base, config['device']).to(config['device'])
 
                 delta_emb_aver = delta_emb_all[:-1].mean(dim=0)
@@ -124,7 +124,7 @@ def main():
                 image.save(out_root+f'/OneActor_'+config['file_names'][img_num]+'_step_'+str(steps)+'.jpg')
         elif config['only_step'] == 'best':
             with torch.no_grad():
-                projector_path = config['pretrain_root'] + f'/weight/best-learned-projector.pth'
+                projector_path = config['pretrain_root'] +'/'+config['dir_name'] + f'/weight/best-learned-projector.pth'
                 delta_emb_all = projector_inference(projector_path, h_tar, h_base, config['device']).to(config['device'])
 
             delta_emb_aver = delta_emb_all[:-1].mean(dim=0) # [2048]
@@ -149,7 +149,7 @@ def main():
             for steps in steps_list:
                 print(f"Using weights from step {steps}")
                 with torch.no_grad():
-                    projector_path = config['pretrain_root'] + f'/weight/learned-projector-steps-{steps}.pth'
+                    projector_path = config['pretrain_root'] +'/'+config['dir_name'] + f'/weight/learned-projector-steps-{steps}.pth'
                     delta_emb_all = projector_inference(projector_path, h_tar, h_base, config['device']).to(config['device'])
 
                 delta_emb_aver = delta_emb_all[:-1].mean(dim=0) # [2048]

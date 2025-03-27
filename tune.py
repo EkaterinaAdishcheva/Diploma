@@ -286,7 +286,7 @@ def main():
     with open(args.config_path, "r") as f:
         config = yaml.safe_load(f)
     device = config['device']
-    accelerator_project_config = ProjectConfiguration(project_dir=config['output_dir'], logging_dir='logs')
+    accelerator_project_config = ProjectConfiguration(project_dir=config['output_dir']+'/'+config['dir_name'], logging_dir='logs')
     accelerator = Accelerator(
         gradient_accumulation_steps=1,
         mixed_precision='no',
@@ -315,9 +315,10 @@ def main():
     if accelerator.is_main_process:
         if config['output_dir'] is not None:
             os.makedirs(config['output_dir'], exist_ok=True)
-            os.makedirs(config['output_dir']+'/ckpt', exist_ok=True)
-            os.makedirs(config['output_dir']+'/weight', exist_ok=True)
-        shutil.copyfile(args.config_path, config['output_dir']+'/config.yaml')
+            os.makedirs(config['output_dir']+'/'+config['dir_name'], exist_ok=True)            
+            os.makedirs(config['output_dir']+'/'+config['dir_name']+'/ckpt', exist_ok=True)
+            os.makedirs(config['output_dir']+'/'+config['dir_name']+'/weight', exist_ok=True)
+        shutil.copyfile(args.config_path, config['output_dir']+'/'+config['dir_name']+'/config.yaml')
 
     # Load Models
     pretrained_model_name_or_path = ENV_CONFIGS['paths']['sdxl_path']
@@ -471,7 +472,7 @@ def main():
     # Potentially load in the weights and states from a previous save
     if config['resume_from_checkpoint'] is not None:
         # Get the most recent checkpoint
-        dirs = os.listdir(config['output_dir']+'/ckpt')
+        dirs = os.listdir(config['output_dir']+'/'+config['dir_name']+'/ckpt')
         dirs = [d for d in dirs if d.startswith("checkpoint")]
         dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
         path = dirs[-1] if len(dirs) > 0 else None
@@ -483,7 +484,7 @@ def main():
             initial_global_step = 0
         else:
             accelerator.print(f"Resuming from checkpoint {path}")
-            accelerator.load_state(os.path.join(config['output_dir'], 'ckpt', path))
+            accelerator.load_state(os.path.join(config['output_dir']+'/'+config['dir_name'], 'ckpt', path))
             global_step = int(path.split("-")[1])
 
             initial_global_step = global_step
@@ -622,7 +623,7 @@ def main():
                     weight_name = (
                         f"learned-projector-steps-{global_step}.pth"
                     )
-                    save_path = os.path.join(config['output_dir'], 'weight', weight_name)
+                    save_path = os.path.join(config['output_dir']+'/'+config['dir_name'], 'weight', weight_name)
 
                     save_progress(
                         projector,
@@ -636,7 +637,7 @@ def main():
                     weight_name = (
                         f"best-learned-projector.pth"
                     )
-                    save_path = os.path.join(config['output_dir'], 'weight', weight_name)
+                    save_path = os.path.join(config['output_dir']+'/'+config['dir_name'], 'weight', weight_name)
 
                     save_progress(
                         projector,
@@ -646,7 +647,7 @@ def main():
 
                 if accelerator.is_main_process:
                     if global_step % config['checkpointing_steps'] == 0:
-                        save_path = os.path.join(config['output_dir'], 'ckpt', f"checkpoint-{initial_global_step + global_step}")
+                        save_path = os.path.join(config['output_dir']+'/'+config['dir_name'], 'ckpt', f"checkpoint-{initial_global_step + global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
