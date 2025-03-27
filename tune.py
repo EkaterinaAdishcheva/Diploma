@@ -182,7 +182,7 @@ class OneActorDataset(Dataset):
         flip_p=0.5,
         set="train",
     ):
-        self.data_root = config['data_root']
+        self.data_root = config['data_root'] + "/" + config['dir_name']
         self.learnable_property = config['concept_type']
         self.size = config['size']
         self.base_condition = config['base_condition']
@@ -235,6 +235,7 @@ class OneActorDataset(Dataset):
         # target samples
         target_img_path = random.choice(self.image_paths)
         img_paths.append(target_img_path)
+        print(target_img_path)
         h_mid_list.append(self.h_mid[-1])
         # base samples
         for i in range(self.neg_num):
@@ -263,6 +264,7 @@ class OneActorDataset(Dataset):
             img_tensors.append(torch.from_numpy(image).permute(2, 0, 1))
 
             text = random.choice(self.templates).format(self.base_condition)
+            print(text)
             text_list.append(text)
         img_tensors.append(img_tensors[0])
         text_list.append(text_list[0])

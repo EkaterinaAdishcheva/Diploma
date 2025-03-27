@@ -1,1 +1,6 @@
 *.pyc
+*.ipynb_checkpoints*
+*.pkl
+*.pth
+data/demo*
+output/demo*

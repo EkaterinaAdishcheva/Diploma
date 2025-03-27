@@ -53,12 +53,14 @@ if __name__ == '__main__':
         config = yaml.safe_load(f)
     device = config['device']
     pipeline = DiffusionPipeline.from_pretrained(ENV_CONFIGS['paths']['sdxl_path']).to(device)
-    data_root = config['data_root']
     prompt = config['source_prompt']
     guidance_scale = config['guidance_scale']
     steps = config['steps']
     generator = torch.manual_seed(config['g_seed'])
     # make data dirs
+    data_root = config['data_root'] 
+    os.makedirs(data_root, exist_ok=True)
+    data_root += "/" + config['dir_name']
     os.makedirs(data_root, exist_ok=True)
     # copy the config
     shutil.copyfile(opt.config_path, data_root+'/config.yaml')

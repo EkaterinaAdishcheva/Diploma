@@ -6,26 +6,31 @@ out_file: '/inference'
 pretrain_root: 'output/demo'
 
 model_type: 'XL'
-size: 1024
+size: 512
 device: 'cuda'
 
 # GENERATE
-source_prompt: 'man with a mustach and a hat, fauvism' # CHANGE HERE, MAKE SURE IT CONTAINS THE BASE WORD
-dir_name: 'a_man_with_a_mustach_and_a_hat_fauvism'
-base_condition: 'man' # CHANGE HERE
-prompt: 'man with a mustach and a hat, fauvism'
-base: 'man'
+source_prompt: 'A young woman with long wavy hair wairing sundress, photo realistic' # CHANGE HERE, MAKE SURE IT CONTAINS THE BASE WORD
+dir_name: 'a_young_woman_with_long_wavy_hair_wairing_sundress_photo_realistic'
+base_condition: 'woman' # CHANGE HERE
+prompt: 'A young woman with long wavy hair wairing sundress, photo realistic'
+base: 'woman'
 source_neg_prompt: ''
-add_prompts: ['in the park', 'reading a book', 'at the beach', 'holding an avacado']
+add_prompts: ['standing in wildflowers',
+   'walking on sunset beach',
+   'sitting at cafe',
+   'leaning on a fence']
 neg_prompts: ['', '', '', '']
-file_names: ['a_man_with_a_mustach_and_a_hat_fauvism_in_the_park', 'a_man_with_a_mustach_and_a_hat_fauvism_reading_a_book',      
-    'a_man_with_a_mustach_and_a_hat_fauvism_at_the_beach', 'a_man_with_a_mustach_and_a_hat_fauvism_holding_an_avacado']
+file_names: ['standing_in_wildflowers',
+   'walking_on_sunset_beach',
+   'sitting_at_cafe',
+   'leaning_on_a_fence']
 
 
 steps: 30
 guidance_scale: 7.5
 g_seed: 6543
-gen_base: 10 # Generate auxiliary images
+gen_base: 3 # Generate auxiliary images
 
 # TUNE
 concept_type: 'character'  # CHANGE HERE, choose from 'character' 'object' 'style'
