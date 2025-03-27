@@ -1,0 +1,82 @@
+alien
+An alien with blue skin, pop art stile
++ a city as background
++ the Effel Tower as a background
++ the Statue of liberty as a background
++ eating a burger
++ wearing sunglasses
+
+gentleman
+A sophisticated gentleman in a toilored suit, charcoal sketch
++ a city as background
++ the Effel Tower as a background
++ the Statue of liberty as a background
++ eating a burger
++ wearing sunglasses
+
+cat
+A cute white baby cat, realistic
++ a city as background
++ the Effel Tower as a background
++ the Statue of liberty as a background
++ eating a burger
++ wearing sunglasses
+
+hippie
+A carefree hippie with long flowing hair
++ a city as background
++ the Effel Tower as a background
++ the Statue of liberty as a background
++ eating a burger
++ wearing sunglasses
+
+adventurer
+A rugger adventurer with tousled hair, comic book stile
++ a city as background
++ the Effel Tower as a background
++ the Statue of liberty as a background
++ eating a burger
++ wearing sunglasses
+
+teenager
+A handsome teenager wearing shorts and canvas shoes, digital painting
++ a city as background
++ the Effel Tower as a background
++ the Statue of liberty as a background
++ eating a burger
++ wearing sunglasses
+
+man
+A 50 years old man with curly hair, photo
++ in the park
++ reading a book
++ at the beach
++ having an avacado
+
+boy
+A digital painting of a teenage boy with black hair, a slight build
++ wearing green knitted hat
++ in a dense forest
++ dressed as an astranaut
++ digging with a trowel
+
+unicorn
+A unicorn with a midnight blue coat and a crystal horn
++ in a blooming meadow
++ wearing a silver bridle
++ in a blanket of mist
++ meeting a group of children
+
+woman
+A young woman with long wavy hair wairing sundress, photo realistic
++ standing in wildflowers
++ walking on sunset beach
++ sitting at cafe
++ leaning on a fence
+
+man
+A man with a mustach and a hat, fauvism
++ in the park
++ reading a book
++ at the beach
++ having an avacado
