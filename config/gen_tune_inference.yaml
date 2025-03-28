@@ -6,7 +6,7 @@ out_file: '/inference'
 pretrain_root: 'output/demo'
 
 model_type: 'XL'
-size: 512
+size: 1024
 device: 'cuda'
 
 # GENERATE
@@ -29,12 +29,12 @@ file_names: ['standing_in_wildflowers',
 
 steps: 30
 guidance_scale: 7.5
-g_seed: 6543
-gen_base: 3 # Generate auxiliary images
+g_seed: 5643
+gen_base: 5 # Generate auxiliary images
 
 # TUNE
 concept_type: 'character'  # CHANGE HERE, choose from 'character' 'object' 'style'
-t_seed: 999
+t_seed: 777
 lr: 0.0001
 neg_num: 3 # Auxiliary images used in a batch
 lambda1: 0.5
@@ -53,10 +53,10 @@ allow_tf32: True
 
 # INFERENCE
 
-seed: 23018
+seed: 32018
 inference_steps: 30
 select_steps: [1,20]  # appplying cluster guidance to these steps
-only_step: [20, 50, 70, 120, 150, 170]  # type in a specific step (Recommended) or set to 'best'
+only_step: [20, 40, 80, 120, 160, 200]  # type in a specific step (Recommended) or set to 'best'
 
 v: 0.8 # semantic interpolation scales
 eta_1: 7.5  # target attraction scale

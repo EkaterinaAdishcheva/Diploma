@@ -10,3 +10,6 @@ chmod 400 /root/.ssh/id_rsa.pub
 chmod 400 /root/.ssh/id_rsa
 
 pip install -r requirements.txt
+
+git config --global user.email "you@example.com"
+git config --global user.name "Your Name"

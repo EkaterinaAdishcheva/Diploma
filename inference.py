@@ -62,8 +62,8 @@ def main():
     pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
 
     # load cluster information
-    xt_dic = load_pickle(config['data_root']+'/xt_list.pkl')
-    h_base = load_pickle(config['data_root']+'/base/mid_list.pkl')
+    xt_dic = load_pickle(config['data_root']+'/'+config['dir_name']+'/xt_list.pkl')
+    h_base = load_pickle(config['data_root']+'/'+config['dir_name']+'/base/mid_list.pkl')
     h_tar = xt_dic['h_mid']
 
     # iterate over image list
@@ -89,7 +89,6 @@ def main():
                 select_list = select_list + list(range(a-1,b))
         else:
             select_list = None
-        print(select_list)
 
         # locate the base token id
         token_id = find_token_ids(pipeline.tokenizer, config['prompt'] + " " + config['add_prompts'][img_num], config['base'])
