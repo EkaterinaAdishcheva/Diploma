@@ -9,7 +9,21 @@ cp /workspace/.ssh/* /root/.ssh/
 chmod 400 /root/.ssh/id_rsa.pub
 chmod 400 /root/.ssh/id_rsa
 
-pip install -r requirements.txt
-
 git config --global user.email "you@example.com"
 git config --global user.name "Your Name"
+
+#One Actor
+git clone git@github.com:EkaterinaAdishcheva/OneActor.git
+pip install -r OneActor/requirements.txt
+pip install -r OneActor/requirements_add.txt
+deactivate oa_venv
+
+#DreamSIm
+python -m venv ds
+. ds/bin/activate
+pip install ipykernel
+python -m ipykernel install --user --name=ds --display-name "Python (ds)"
+git clone https://github.com/ssundaram21/dreamsim.git
+pip install -r dreamsim/requirements.txt
+deactivate ds
+
