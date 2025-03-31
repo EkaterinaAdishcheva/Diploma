@@ -5,39 +5,138 @@ import os
 import random
 import shutil
 import yaml
-import shutil
 import json
 import numpy as np
 import PIL
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
-
 from packaging import version
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
-
 import sys
 sys.path.append("./diffusers")
-
 import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
-
 import pickle
-
 from projector import Projector
 
 torch.autograd.set_detect_anomaly(True)
+
+from diffusers.utils import convert_unet_state_dict_to_peft
+
+
+from consistory_utils import AttentionStore, AttentionMasker, TripletLoss
+
+###----------------------
+# In OneActor's UNet (or custom pipeline), add Consistory-style attention:
+from consistory_unet_sdxl import ConsistorySDXLUNet2DConditionModel  # Or adapt for SD1.5
+
+class HybridUNet(ConsistorySDXLUNet2DConditionModel):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.identity_projection = nn.Linear(768, 2048)
+        self.attention_masker = AttentionMasker()
+        self.shared_kv_cache = None
+        self.token_indices = None
+        self.attention_store = AttentionStore()
+        print(self.cross_attention_dim, self.attention_head_dim)
+
+        self.scale = (self.cross_attention_dim // self.attention_head_dim) ** -0.5
+
+    def forward(self, x, t, encoder_hidden_states, **kwargs):
+        masked_attn = self.attention_masker(encoder_hidden_states, x)
+        
+        if self.shared_kv_cache:
+            encoder_hidden_states = self._apply_shared_attention(masked_attn)
+            
+        out = super().forward(x, t, encoder_hidden_states, **kwargs)
+        
+        if self.shared_kv_cache and self.token_indices is not None:
+            for name, module in self.named_modules():
+                if "attn2" in name and "processor" in name:
+                    self.attention_store(module.attention_probs, is_target=True)
+                    break
+        return out
+    
+    def _apply_shared_attention(self, hidden_states):
+        q = self.to_q(hidden_states)
+        k = self.to_k(hidden_states)
+        v = self.to_v(hidden_states)
+        
+        if self.shared_kv_cache:
+            k = torch.cat([k, self.shared_kv_cache["k"]], dim=1)
+            v = torch.cat([v, self.shared_kv_cache["v"]], dim=1)
+        
+        attention_scores = torch.matmul(q, k.transpose(-1, -2)) * self.scale
+        
+        if self.token_indices is not None:
+            mask = torch.zeros_like(attention_scores)
+            mask[:, :, self.token_indices] = 1
+            attention_scores = attention_scores.masked_fill(mask == 0, -1e4)
+        
+        attention_probs = torch.softmax(attention_scores, dim=-1)
+        return torch.matmul(attention_probs, v)
+        
+    def enable_kv_cache(self, latent):
+        self.shared_kv_cache = {
+            "k": self.to_k(latent),
+            "v": self.to_v(latent)
+        }
+    
+    def set_attention_control(self, token_indices):
+        self.token_indices = token_indices
+
+
+def create_token_indices(prompts, concept_token, tokenizer):
+    token_indices = []
+    for prompt in prompts:
+        tokens = tokenizer.encode(prompt[0])
+        concept_indices = [i for i, t in enumerate(tokens) 
+                         if tokenizer.decode(t) in concept_token]
+        token_indices.extend(concept_indices)
+    return torch.tensor(token_indices, device=device)
+
+def hybrid_loss(generated_images, anchors, nn_maps):
+    triplet_loss = TripletLoss()(anchors["latent"], generated_images["latent"])
+    injection_loss = F.mse_loss(nn_maps["ref_features"], nn_maps["gen_features"])
+    return triplet_loss + 0.5 * injection_loss
+
+
+
+
+def hybrid_loss(generated_images, anchors, nn_maps):
+    # OneActor: Identity loss
+    triplet_loss = TripletLoss(anchors["latent"], generated_images["latent"])
+    
+    # Consistory: Spatial consistency loss
+    injection_loss = F.mse_loss(nn_maps["ref_features"], nn_maps["gen_features"])
+    
+    return triplet_loss + 0.5 * injection_loss  # Weighted sum
+
+def apply_hybrid_attention(prompts, tokenizer):
+    # OneActor: Boost identity token ("[V]")
+    embeddings = tokenizer(prompts)
+    v_token_id = tokenizer.encode("[V]")[0]
+    embeddings[v_token_id] *= 2.0  # Amplify identity
+    
+    # Consistory: Mask non-object regions
+    masks = create_token_masks(prompts, ["[V]", "shirt", "face"])  # Combined tokens
+    return embeddings, masks
+
+
+###----------------------
 
 if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
     PIL_INTERPOLATION = {
@@ -278,30 +377,36 @@ class OneActorDataset(Dataset):
     
     
 def main():
-    # get environment configs
-    with open("PATH.json","r") as f:
+    # Load configs
+    with open("PATH.json", "r") as f:
         ENV_CONFIGS = json.load(f)
-    # get user configs
+    
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_path', type=str, default='./config/gen_tune_inference.yaml')
     args = parser.parse_args()
+    
     with open(args.config_path, "r") as f:
         config = yaml.safe_load(f)
-    device = config['device']
-    accelerator_project_config = ProjectConfiguration(project_dir=config['output_dir']+'/'+config['dir_name'], logging_dir='logs')
+    
+    # Initialize accelerator
     accelerator = Accelerator(
         gradient_accumulation_steps=1,
         mixed_precision='no',
         log_with="tensorboard",
-        project_config=accelerator_project_config,
+        project_config=ProjectConfiguration(
+            project_dir=os.path.join(config['output_dir'], config['dir_name']),
+            logging_dir='logs'
+        )
     )
-    # Make one log on every process with the configuration for debugging.
+    
+    # Setup logging
+    logger = get_logger(__name__)
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
         level=logging.INFO,
     )
-    logger.info(accelerator.state, main_process_only=False)
+    
     if accelerator.is_local_main_process:
         transformers.utils.logging.set_verbosity_warning()
         diffusers.utils.logging.set_verbosity_info()
@@ -309,252 +414,147 @@ def main():
         transformers.utils.logging.set_verbosity_error()
         diffusers.utils.logging.set_verbosity_error()
 
-    # If passed along, set the training seed now.
     if config['t_seed'] is not None:
         set_seed(config['t_seed'])
 
-    # Handle the repository creation
+    # Prepare output directory
     if accelerator.is_main_process:
-        if config['output_dir'] is not None:
-            os.makedirs(config['output_dir'], exist_ok=True)
-            os.makedirs(config['output_dir']+'/'+config['dir_name'], exist_ok=True)            
-            os.makedirs(config['output_dir']+'/'+config['dir_name']+'/ckpt', exist_ok=True)
-            os.makedirs(config['output_dir']+'/'+config['dir_name']+'/weight', exist_ok=True)
-        shutil.copyfile(args.config_path, config['output_dir']+'/'+config['dir_name']+'/config.yaml')
+        os.makedirs(config['output_dir'], exist_ok=True)
+        os.makedirs(os.path.join(config['output_dir'], config['dir_name'], 'ckpt'), exist_ok=True)
+        os.makedirs(os.path.join(config['output_dir'], config['dir_name'], 'weight'), exist_ok=True)
+        shutil.copyfile(args.config_path, os.path.join(config['output_dir'], config['dir_name'], 'config.yaml'))
 
-    # Load Models
+    # Load models
     pretrained_model_name_or_path = ENV_CONFIGS['paths']['sdxl_path']
-    # Load the tokenizers
-    tokenizer_one = AutoTokenizer.from_pretrained(
-        pretrained_model_name_or_path,
-        subfolder="tokenizer",
-        revision=None,
-        use_fast=False,
-    )
-    tokenizer_two = AutoTokenizer.from_pretrained(
-        pretrained_model_name_or_path,
-        subfolder="tokenizer_2",
-        revision=None,
-        use_fast=False,
-    )
-
-    # import correct text encoder classes
-    text_encoder_cls_one = import_model_class_from_model_name_or_path(
-        pretrained_model_name_or_path, None
-    )
-    text_encoder_cls_two = import_model_class_from_model_name_or_path(
-        pretrained_model_name_or_path, None, subfolder="text_encoder_2"
-    )
-
-    # Load scheduler and models
+    tokenizer_one = AutoTokenizer.from_pretrained(pretrained_model_name_or_path, subfolder="tokenizer", use_fast=False)
+    tokenizer_two = AutoTokenizer.from_pretrained(pretrained_model_name_or_path, subfolder="tokenizer_2", use_fast=False)
+    
+    text_encoder_cls_one = import_model_class_from_model_name_or_path(pretrained_model_name_or_path, None)
+    text_encoder_cls_two = import_model_class_from_model_name_or_path(pretrained_model_name_or_path, None, subfolder="text_encoder_2")
+    
     noise_scheduler = DDPMScheduler.from_pretrained(pretrained_model_name_or_path, subfolder="scheduler")
-    # Check for terminal SNR in combination with SNR Gamma
-    text_encoder_one = text_encoder_cls_one.from_pretrained(
-        pretrained_model_name_or_path, subfolder="text_encoder",
-    )
-    text_encoder_two = text_encoder_cls_two.from_pretrained(
-        pretrained_model_name_or_path, subfolder="text_encoder_2",
-    )
+    text_encoder_one = text_encoder_cls_one.from_pretrained(pretrained_model_name_or_path, subfolder="text_encoder")
+    text_encoder_two = text_encoder_cls_two.from_pretrained(pretrained_model_name_or_path, subfolder="text_encoder_2")
+    vae = AutoencoderKL.from_pretrained(pretrained_model_name_or_path, subfolder="vae")
 
-    vae = AutoencoderKL.from_pretrained(
+    # Load original UNet
+    original_unet = UNet2DConditionModel.from_pretrained(
         pretrained_model_name_or_path,
-        subfolder="vae",
+        subfolder="unet"
     )
-    unet = UNet2DConditionModel.from_pretrained(
-        pretrained_model_name_or_path, subfolder="unet",
-    )
+    print(original_unet.config)
+    
+    # Convert to HybridUNet
+    unet = HybridUNet(**original_unet.config)
+    state_dict = convert_unet_state_dict_to_peft(original_unet.state_dict())
+    unet.load_state_dict(state_dict, strict=False)
 
-    # Freeze vae and text encoders.
+# Initialize new components
+    nn.init.xavier_uniform_(unet.identity_projection.weight)
+
+    # unet = HybridUNet.from_pretrained(pretrained_model_name_or_path, subfolder="unet")
+    
+    # Freeze models
     vae.requires_grad_(False)
     text_encoder_one.requires_grad_(False)
     text_encoder_two.requires_grad_(False)
     unet.requires_grad_(False)
 
-    # Build projector
+    # Initialize projector
     projector = Projector(1280, 2048)
-    # Fire projector
     projector.requires_grad_(True)
 
+    # Enable xformers if available
+    if config['use_xformers'] and is_xformers_available():
+        unet.enable_xformers_memory_efficient_attention()
 
-    if config['use_xformers']:
-        if is_xformers_available():
-            import xformers
-
-            xformers_version = version.parse(xformers.__version__)
-            if xformers_version == version.parse("0.0.16"):
-                logger.warn(
-                    "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
-                )
-            unet.enable_xformers_memory_efficient_attention()
-        else:
-            raise ValueError("xformers is not available. Make sure it is installed correctly")
-
-    # Enable TF32 for faster training on Ampere GPUs,
-    # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
     if config['allow_tf32']:
         torch.backends.cuda.matmul.allow_tf32 = True
 
-    # Initialize the optimizer
+    # Setup optimizer and scheduler
     optimizer = torch.optim.AdamW(
-        projector.parameters(),  # only optimize the embeddings
+        projector.parameters(),
         lr=config['lr'],
         betas=(0.9, 0.999),
         weight_decay=1e-2,
         eps=1e-8,
     )
 
-    # Dataset and DataLoaders creation:
-    train_dataset = OneActorDataset(
-        config=config,
-        set='train',
-    )
+    # Prepare dataset
+    train_dataset = OneActorDataset(config=config, set='train')
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=0
     )
 
-    # Scheduler and math around the number of training steps.
-    overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader))
-
-    max_train_steps = config['epochs'] * num_update_steps_per_epoch
-    overrode_max_train_steps = True
-
-    lr_scheduler = get_scheduler(
-        "constant",
-        optimizer=optimizer,
-        num_warmup_steps=500 * accelerator.num_processes,
-        num_training_steps=max_train_steps * accelerator.num_processes,
-        num_cycles=1,
-    )
-
-    projector.train()
-    # Prepare everything with our `accelerator`.
+    # Prepare everything with accelerator
     projector, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        projector, optimizer, train_dataloader, lr_scheduler
+        projector, optimizer, train_dataloader, 
+        get_scheduler(
+            "constant",
+            optimizer=optimizer,
+            num_warmup_steps=500 * accelerator.num_processes,
+            num_training_steps=config['epochs'] * math.ceil(len(train_dataloader)) * accelerator.num_processes,
+        )
     )
 
-    # For mixed precision training we cast all non-trainable weigths (vae, non-lora text_encoder and non-lora unet) to half-precision
-    # as these weights are only used for inference, keeping weights in full precision is not required.
+    # Move models to device
+    device = accelerator.device
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
         weight_dtype = torch.float16
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
+        
+    unet.to(device, dtype=weight_dtype)
+    vae.to(device, dtype=weight_dtype)
+    text_encoder_one.to(device, dtype=weight_dtype)
+    text_encoder_two.to(device, dtype=weight_dtype)
 
-    # Move vae and unet to device and cast to weight_dtype
-    unet.to(accelerator.device, dtype=weight_dtype)
-    vae.to(accelerator.device, dtype=weight_dtype)
-    text_encoder_one.to(accelerator.device, dtype=weight_dtype)
-    text_encoder_two.to(accelerator.device, dtype=weight_dtype)
-
-    # We need to recalculate our total training steps as the size of the training dataloader may have changed.
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader))
-    if overrode_max_train_steps:
-        max_train_steps = config['epochs'] * num_update_steps_per_epoch
-    # Afterwards we recalculate our number of training epochs
-    config['epochs'] = math.ceil(max_train_steps / num_update_steps_per_epoch)
-
-    # We need to initialize the trackers we use, and also store our configuration.
-    # The trackers initializes automatically on the main process.
-    if accelerator.is_main_process:
-        accelerator.init_trackers("OneActor", config=config)
-
-    # Train!
-    total_batch_size = config['batch_size'] * accelerator.num_processes
-
-    logger.info("***** Running OneActor training *****")
-    logger.info(f"  Num examples = {len(train_dataset)}")
-    logger.info(f"  Num Epochs = {config['epochs']}")
-    logger.info(f"  Instantaneous batch size per device = {config['batch_size']}")
-    logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
-    logger.info(f"  Gradient Accumulation steps = {1}")
-    logger.info(f"  Total optimization steps = {max_train_steps}")
+    # Training loop
     global_step = 0
-    first_epoch = 0
-    # Potentially load in the weights and states from a previous save
-    if config['resume_from_checkpoint'] is not None:
-        # Get the most recent checkpoint
-        dirs = os.listdir(config['output_dir']+'/'+config['dir_name']+'/ckpt')
-        dirs = [d for d in dirs if d.startswith("checkpoint")]
-        dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
-        path = dirs[-1] if len(dirs) > 0 else None
-
-        if path is None:
-            accelerator.print(
-                f"Checkpoint does not exist. Starting a new training run."
-            )
-            initial_global_step = 0
-        else:
-            accelerator.print(f"Resuming from checkpoint {path}")
-            accelerator.load_state(os.path.join(config['output_dir']+'/'+config['dir_name'], 'ckpt', path))
-            global_step = int(path.split("-")[1])
-
-            initial_global_step = global_step
-            first_epoch = global_step // num_update_steps_per_epoch
-
-    else:
-        initial_global_step = 0
-
-    progress_bar = tqdm(
-        range(0, max_train_steps),
-        initial=initial_global_step,
-        desc="Steps",
-        # Only show the progress bar once on each machine.
-        disable=not accelerator.is_local_main_process,
-    )
-
-    best_loss = 1000.0
-    for epoch in range(first_epoch, config['epochs']):
+    best_loss = float('inf')
+    
+    for epoch in range(config['epochs']):
         projector.train()
         train_loss = 0.0
+        
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(projector):
-                # import pdb; pdb.set_trace()
                 # Convert images to latent space
                 latents = vae.encode(batch["pixel_values"][0].to(dtype=weight_dtype)).latent_dist.sample().detach()
-
                 latents = latents * vae.config.scaling_factor
 
-                # Sample noise that we'll add to the latents
+                # Sample noise and timesteps
                 noise = torch.randn_like(latents)
-                noise[-1] = noise[0]    # aver is the same as target
-                bsz = latents.shape[0]
-                # Sample a random timestep for each image
-                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
-                timesteps = timesteps.long()
-
-                # Add noise to the latents according to the noise magnitude at each timestep
-                # (this is the forward diffusion process)
+                noise[-1] = noise[0]  # average is same as target
+                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (latents.shape[0],), device=device)
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-                # time ids
-                def compute_time_ids(original_size, crops_coords_top_left):
-                    # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
-                    target_size = (1024, 1024)
-                    add_time_ids = list(original_size + crops_coords_top_left + target_size)
-                    add_time_ids = torch.tensor([add_time_ids])
-                    add_time_ids = add_time_ids.to(accelerator.device, dtype=weight_dtype)
-                    return add_time_ids # tensor(1, 6)
-                
-                original_size = (1024, 1024)
-                crops_coords_top_left = (0, 0)
-                add_time_ids = compute_time_ids(original_size, crops_coords_top_left).repeat(bsz, 1).to(accelerator.device)
-                unet_added_conditions = {"time_ids": add_time_ids}
+                # Consistory attention control
+                if config.get('use_consistory', False):
+                    token_indices = create_token_indices(
+                        batch['text'], 
+                        concept_token=[batch['base'][0]], 
+                        tokenizer=tokenizer_one
+                    )
+                    unet.set_attention_control(token_indices)
+                    
+                    if latents.shape[0] > 1:
+                        with torch.no_grad():
+                            unet.enable_kv_cache(latents[0:1])
 
-                text_encoders = [text_encoder_one, text_encoder_two]
-                tokenizers = [tokenizer_one, tokenizer_two]
-                # Get the text embedding for conditioning
+                # Prepare text embeddings
                 prompt_embeds_batch_list = []
                 add_text_embeds_batch_list = []
-                delta_emb = projector(batch['h_mid'][0, :, -1].to(device)) # torch.size(bs, 1280, 32, 32) -> torch.size(bs, 2048)
+                delta_emb = projector(batch['h_mid'][0, :, -1].to(device))
                 delta_emb_aver = delta_emb[1:-1].mean(dim=0, keepdim=True)
-                for b_s in range(bsz): # 1*target+n*base+1*aver
-                    prompt = batch['text'][b_s][0] # str
+                
+                for b_s in range(latents.shape[0]):
+                    prompt = batch['text'][b_s][0]
                     prompt_embeds_list = []
-
-                    first = 1
-                    for tokenizer, text_encoder in zip(tokenizers, text_encoders):
-
+                    first = True
+                    
+                    for tokenizer, text_encoder in zip([tokenizer_one, tokenizer_two], [text_encoder_one, text_encoder_two]):
                         text_inputs = tokenizer(
                             prompt,
                             padding="max_length",
@@ -562,108 +562,98 @@ def main():
                             truncation=True,
                             return_tensors="pt",
                         )
-                        tokens = tokenizer.encode(prompt)
                         
                         if first:
-                            for i, token in enumerate(tokens):
-                                if tokenizer.decode(token) == batch['base'][0]:
-                                    base_token_id = i
-                                    first = 0
-                                    break
-                        text_input_ids = text_inputs.input_ids
-                        prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=True)
+                            tokens = tokenizer.encode(prompt)
+                            base_token_id = next((i for i, t in enumerate(tokens) 
+                                               if tokenizer.decode(t) == batch['base'][0]), None)
+                            first = False
+                            
+                        prompt_embeds = text_encoder(text_inputs.input_ids.to(device), output_hidden_states=True)
                         pooled_prompt_embeds = prompt_embeds[0]
                         prompt_embeds = prompt_embeds.hidden_states[-2]
                         prompt_embeds_list.append(prompt_embeds)
-                    prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)    # tensor(1, 77, 2048)
-
-                    if b_s == bsz-1:
+                    
+                    prompt_embeds = torch.cat(prompt_embeds_list, dim=-1)
+                    
+                    if b_s == latents.shape[0]-1:
                         delta_emb_ = delta_emb_aver
                     else:
                         delta_emb_ = delta_emb[b_s:b_s+1]
-                    prompt_embeds[:, base_token_id, :] = prompt_embeds[:, base_token_id, :] + delta_emb_
-
+                    
+                    prompt_embeds[:, base_token_id, :] += delta_emb_
                     prompt_embeds_batch_list.append(prompt_embeds)
                     add_text_embeds_batch_list.append(pooled_prompt_embeds)
+
+                # Prepare time ids
+                original_size = crops_coords_top_left = (0, 0)
+                add_time_ids = torch.tensor([list(original_size + crops_coords_top_left + (1024, 1024))], 
+                                           device=device, dtype=weight_dtype)
+                add_time_ids = add_time_ids.repeat(latents.shape[0], 1)
                 
-                prompt_embeds = torch.concat(prompt_embeds_batch_list, dim=0)
-                add_text_embeds = torch.concat(add_text_embeds_batch_list, dim=0).to(accelerator.device)
+                # Forward pass
+                prompt_embeds = torch.cat(prompt_embeds_batch_list, dim=0).to(device)
+                add_text_embeds = torch.cat(add_text_embeds_batch_list, dim=0).to(device)
+                
+                model_pred = unet(
+                    noisy_latents,
+                    timesteps,
+                    encoder_hidden_states=prompt_embeds,
+                    added_cond_kwargs={"time_ids": add_time_ids, "text_embeds": add_text_embeds}
+                ).sample
 
-                unet_added_conditions.update({"text_embeds": add_text_embeds})
-                prompt_embeds = prompt_embeds.to(accelerator.device)
-
-
-                # Predict the noise residual
-                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states=prompt_embeds, added_cond_kwargs=unet_added_conditions).sample
-
-                # Get the target for loss depending on the prediction type
-                if noise_scheduler.config.prediction_type == "epsilon":
-                    target = noise
-                elif noise_scheduler.config.prediction_type == "v_prediction":
-                    target = noise_scheduler.get_velocity(latents, noise, timesteps)
+                # Compute loss
+                target = noise if noise_scheduler.config.prediction_type == "epsilon" else \
+                        noise_scheduler.get_velocity(latents, noise, timesteps)
+                
+                loss_target = F.mse_loss(model_pred[:1].float(), target[:1].float())
+                loss_base = F.mse_loss(model_pred[1:-1].float(), target[1:-1].float())
+                loss_aver = F.mse_loss(model_pred[-1:].float(), target[-1:].float())
+                
+                if config.get('use_consistory', False):
+                    attention_maps = unet.attention_store.get_attention_maps()
+                    if attention_maps['target'] is not None and attention_maps['reference'] is not None:
+                        consistency_loss = F.mse_loss(
+                            attention_maps['target'],
+                            attention_maps['reference'].detach()
+                        )
+                        loss = loss_target + config['lambda1']*loss_base + config['lambda2']*loss_aver + config.get('consistency_lambda', 0.5)*consistency_loss
+                    else:
+                        loss = loss_target + config['lambda1']*loss_base + config['lambda2']*loss_aver
                 else:
-                    raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+                    loss = loss_target + config['lambda1']*loss_base + config['lambda2']*loss_aver
 
-                loss_target = F.mse_loss(model_pred[:1].float(), target[:1].float(), reduction="mean")
-                loss_base = F.mse_loss(model_pred[1:-1].float(), target[1:-1].float(), reduction="mean")
-                loss_aver = F.mse_loss(model_pred[-1:].float(), target[-1:].float(), reduction="mean")
-                loss = loss_target + config['lambda1'] * loss_base + config['lambda2'] * loss_aver
-                avg_loss = accelerator.gather(loss.repeat(config['batch_size'])).mean()
-                train_loss += avg_loss.item()
-
+                # Backward pass
                 accelerator.backward(loss)
-
                 optimizer.step()
-                lr_scheduler.step()
                 optimizer.zero_grad()
 
-            # Checks if the accelerator has performed an optimization step behind the scenes
+            # Logging and checkpointing
             if accelerator.sync_gradients:
-                progress_bar.update(1)
                 global_step += 1
+                avg_loss = accelerator.gather(loss.repeat(config['batch_size'])).mean()
+                train_loss += avg_loss.item()
+                
                 if global_step % config['save_steps'] == 0:
-                    weight_name = (
-                        f"learned-projector-steps-{global_step}.pth"
-                    )
-                    save_path = os.path.join(config['output_dir']+'/'+config['dir_name'], 'weight', weight_name)
-
-                    save_progress(
-                        projector,
-                        accelerator,
-                        save_path,
-                    )
+                    save_path = os.path.join(config['output_dir'], config['dir_name'], 'weight', 
+                                           f"learned-projector-steps-{global_step}.pth")
+                    torch.save(accelerator.unwrap_model(projector), save_path)
+                
                 if avg_loss < best_loss:
                     best_loss = avg_loss
-                    best_step = initial_global_step + global_step
-                    print(f'Best loss:{best_loss} @@@ Step:{best_step}')
-                    weight_name = (
-                        f"best-learned-projector.pth"
-                    )
-                    save_path = os.path.join(config['output_dir']+'/'+config['dir_name'], 'weight', weight_name)
+                    save_path = os.path.join(config['output_dir'], config['dir_name'], 'weight', 
+                                           "best-learned-projector.pth")
+                    torch.save(accelerator.unwrap_model(projector), save_path)
+                
+                if accelerator.is_main_process and global_step % config['checkpointing_steps'] == 0:
+                    save_path = os.path.join(config['output_dir'], config['dir_name'], 'ckpt', 
+                                           f"checkpoint-{global_step}")
+                    accelerator.save_state(save_path)
 
-                    save_progress(
-                        projector,
-                        accelerator,
-                        save_path,
-                    )
-
-                if accelerator.is_main_process:
-                    if global_step % config['checkpointing_steps'] == 0:
-                        save_path = os.path.join(config['output_dir']+'/'+config['dir_name'], 'ckpt', f"checkpoint-{initial_global_step + global_step}")
-                        accelerator.save_state(save_path)
-                        logger.info(f"Saved state to {save_path}")
-
-            logs = {"loss": train_loss, "lr": lr_scheduler.get_last_lr()[0]}
-            progress_bar.set_postfix(**logs)
+            logs = {"loss": train_loss/(step+1), "lr": optimizer.param_groups[0]['lr']}
             accelerator.log(logs, step=global_step)
-            train_loss = 0.0
 
-    # Create the pipeline using the trained modules and save it.
-    accelerator.wait_for_everyone()
-   
-    print(f'Best loss:{best_loss} @@@ Step:{best_step}')
     accelerator.end_training()
-
 
 if __name__ == "__main__":
     main()
