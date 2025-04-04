@@ -13,6 +13,9 @@ chmod 400 /root/.ssh/id_rsa
 git config --global user.email "you@example.com"
 git config --global user.name "Your Name"
 
+cat .ssh/id_rsa.pub
+
+
 #One Actor
 git clone git@github.com:EkaterinaAdishcheva/OneActor.git
 pip install -r OneActor/requirements.txt
