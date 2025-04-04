@@ -1,2 +1,5 @@
 matplotlib
-torchmetrics
+# torchmetrics
+
+# consistory
+pip install scikit-image==0.22.0

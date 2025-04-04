@@ -1,4 +1,5 @@
 python -m venv oa_venv
+cd /workspace/
 . oa_venv/bin/activate
 pip install ipykernel
 python -m ipykernel install --user --name=oa_venv --display-name "Python (oa_venv)"

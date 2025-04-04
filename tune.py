@@ -28,10 +28,13 @@ import sys
 sys.path.append("./diffusers")
 
 import diffusers
-from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
+from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel, DDIMScheduler
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
+
+from consistory_unet_sdxl import ConsistorySDXLUNet2DConditionModel
+from consistory_pipeline import ConsistoryExtendAttnSDXLPipeline
 
 import pickle
 
@@ -364,11 +367,25 @@ def main():
         pretrained_model_name_or_path, subfolder="unet",
     )
 
+    # ### model from consistory
+    # float_type = torch.float16
+    # sd_id = "stabilityai/stable-diffusion-xl-base-1.0"
+    
+    # # inner_unet = ConsistorySDXLUNet2DConditionModel.from_pretrained(sd_id, subfolder="unet", torch_dtype=float_type)
+    # ### model from consistory
+    # inner_unet = ConsistorySDXLUNet2DConditionModel.from_pretrained(sd_id, subfolder="unet", torch_dtype=float_type)
+    # scheduler = DDPMScheduler.from_pretrained(sd_id, subfolder="scheduler")
+
+    # unet = ConsistoryExtendAttnSDXLPipeline.from_pretrained(
+    #     sd_id, unet=inner_unet, torch_dtype=float_type, variant="fp16", use_safetensors=True, scheduler=scheduler
+    # ).to(device)
+    # unet.enable_freeu(s1=0.6, s2=0.4, b1=1.1, b2=1.2)
+    
     # Freeze vae and text encoders.
     vae.requires_grad_(False)
     text_encoder_one.requires_grad_(False)
     text_encoder_two.requires_grad_(False)
-    unet.requires_grad_(False)
+    unet.unet.requires_grad_(False)
 
     # Build projector
     projector = Projector(1280, 2048)
@@ -595,6 +612,7 @@ def main():
 
                 # Predict the noise residual
                 model_pred = unet(noisy_latents, timesteps, encoder_hidden_states=prompt_embeds, added_cond_kwargs=unet_added_conditions).sample
+
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":

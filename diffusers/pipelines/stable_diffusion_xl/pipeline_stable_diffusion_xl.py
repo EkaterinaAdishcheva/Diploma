@@ -1029,6 +1029,7 @@ class StableDiffusionXLPipeline(
             [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] if `return_dict` is True, otherwise a
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
+        print(f"oneactor_save = {oneactor_save}")
         ###############
         assert (oneactor_save and oneactor_inference)==False
         if oneactor_save:
@@ -1059,6 +1060,8 @@ class StableDiffusionXLPipeline(
         original_size = original_size or (height, width)
         target_size = target_size or (height, width)
 
+        print(f"prompt = {prompt}")
+        print(f"prompt_2 = {prompt_2}")
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
@@ -1123,6 +1126,7 @@ class StableDiffusionXLPipeline(
 
         # 5. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
+        print(f"latents = {latents}")
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
@@ -1282,6 +1286,7 @@ class StableDiffusionXLPipeline(
                     added_cond_kwargs["image_embeds"] = image_embeds
 
                 if oneactor_save:
+                    print(f"latent_model_input {latent_model_input.size()}, t={t}, prompt_embeds.size()={prompt_embeds.size()}")
                     noise_pred, mid_save = self.unet(    ###
                         latent_model_input,
                         t,
