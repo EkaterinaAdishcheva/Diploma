@@ -56,10 +56,11 @@ else:
         "nearest": PIL.Image.NEAREST,
     }
 # ------------------------------------------------------------------------------
-
-
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 # check_min_version("0.26.0.dev0")
+
+
+import numpy as np
 
 logger = get_logger(__name__)
 
@@ -278,6 +279,13 @@ class OneActorDataset(Dataset):
     
     
 def main():
+    zone = np.zeros(shape=(5, 4, 128,128))
+    for i1 in range(5):
+        for i2 in range(4):
+            for i in range(128):
+                for j in range(128):
+                    zone[i1, i2, i,j] = 1/(1 + np.e**(-((j-64)/32)**2 - ((i-48)/32)**2)) * (1 - 1/(1 + np.e**(-((j-64)/32)**2 -((i-48)/32)**2))) * 4
+    
     # get environment configs
     with open("PATH.json","r") as f:
         ENV_CONFIGS = json.load(f)
@@ -409,7 +417,7 @@ def main():
         set='train',
     )
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=1
+        train_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=0
     )
 
     # Scheduler and math around the number of training steps.
@@ -442,6 +450,8 @@ def main():
         weight_dtype = torch.bfloat16
 
     # Move vae and unet to device and cast to weight_dtype
+
+    
     unet.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
     text_encoder_one.to(accelerator.device, dtype=weight_dtype)
@@ -502,7 +512,8 @@ def main():
         # Only show the progress bar once on each machine.
         disable=not accelerator.is_local_main_process,
     )
-
+    zone = torch.tensor(zone, device=device).float()
+    
     best_loss = 1000.0
     for epoch in range(first_epoch, config['epochs']):
         projector.train()
@@ -604,11 +615,13 @@ def main():
                     target = noise_scheduler.get_velocity(latents, noise, timesteps)
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
-                print(f"model_pred.float().size() = {model_pred[:1].float().size()}")
+                print(f"model_pred.float().size() = {model_pred.float().size()}")
+                print(f"target.float().size() = {target.float().size()}")
                 
-                loss_target = F.mse_loss(model_pred[:1].float(), target[:1].float(), reduction="mean")
-                loss_base = F.mse_loss(model_pred[1:-1].float(), target[1:-1].float(), reduction="mean")
-                loss_aver = F.mse_loss(model_pred[-1:].float(), target[-1:].float(), reduction="mean")
+                
+                loss_target = F.mse_loss(model_pred[:1].float() * zone[:1], target[:1].float() * zone[:1], reduction="mean")
+                loss_base = F.mse_loss(model_pred[1:-1].float() * zone[1:-1], target[1:-1].float() * zone[1:-1], reduction="mean")
+                loss_aver = F.mse_loss(model_pred[-1:].float() * zone[-1:], target[-1:].float() * zone[-1:], reduction="mean")
                 loss = loss_target + config['lambda1'] * loss_base + config['lambda2'] * loss_aver
                 avg_loss = accelerator.gather(loss.repeat(config['batch_size'])).mean()
                 train_loss += avg_loss.item()
