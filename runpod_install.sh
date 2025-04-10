@@ -36,3 +36,6 @@ pip install torch
 pip install Pillow
 deactivate ds
 
+sam2
+https://github.com/facebookresearch/sam2/blob/main/notebooks/image_predictor_example.ipynb
+https://github.com/facebookresearch/sam2/blob/main/notebooks/automatic_mask_generator_example.ipynb
