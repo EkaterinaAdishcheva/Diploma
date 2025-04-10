@@ -30,5 +30,9 @@ pip install ipykernel
 python -m ipykernel install --user --name=ds --display-name "Python (ds)"
 git clone https://github.com/ssundaram21/dreamsim.git
 pip install -r dreamsim/requirements.txt
+cp OneActor/ds_metrics.ipynb dreamsim
+
+pip install torch
+pip install Pillow
 deactivate ds
 
