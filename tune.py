@@ -33,9 +33,6 @@ from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
-from consistory_unet_sdxl import ConsistorySDXLUNet2DConditionModel
-from consistory_pipeline import ConsistoryExtendAttnSDXLPipeline
-
 import pickle
 
 from projector import Projector
@@ -366,26 +363,12 @@ def main():
     unet = UNet2DConditionModel.from_pretrained(
         pretrained_model_name_or_path, subfolder="unet",
     )
-
-    # ### model from consistory
-    # float_type = torch.float16
-    # sd_id = "stabilityai/stable-diffusion-xl-base-1.0"
-    
-    # # inner_unet = ConsistorySDXLUNet2DConditionModel.from_pretrained(sd_id, subfolder="unet", torch_dtype=float_type)
-    # ### model from consistory
-    # inner_unet = ConsistorySDXLUNet2DConditionModel.from_pretrained(sd_id, subfolder="unet", torch_dtype=float_type)
-    # scheduler = DDPMScheduler.from_pretrained(sd_id, subfolder="scheduler")
-
-    # unet = ConsistoryExtendAttnSDXLPipeline.from_pretrained(
-    #     sd_id, unet=inner_unet, torch_dtype=float_type, variant="fp16", use_safetensors=True, scheduler=scheduler
-    # ).to(device)
-    # unet.enable_freeu(s1=0.6, s2=0.4, b1=1.1, b2=1.2)
     
     # Freeze vae and text encoders.
     vae.requires_grad_(False)
     text_encoder_one.requires_grad_(False)
     text_encoder_two.requires_grad_(False)
-    unet.unet.requires_grad_(False)
+    unet.requires_grad_(False)
 
     # Build projector
     projector = Projector(1280, 2048)
@@ -426,7 +409,7 @@ def main():
         set='train',
     )
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=0
+        train_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=1
     )
 
     # Scheduler and math around the number of training steps.
@@ -621,7 +604,8 @@ def main():
                     target = noise_scheduler.get_velocity(latents, noise, timesteps)
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
-
+                print(f"model_pred.float().size() = {model_pred[:1].float().size()}")
+                
                 loss_target = F.mse_loss(model_pred[:1].float(), target[:1].float(), reduction="mean")
                 loss_base = F.mse_loss(model_pred[1:-1].float(), target[1:-1].float(), reduction="mean")
                 loss_aver = F.mse_loss(model_pred[-1:].float(), target[-1:].float(), reduction="mean")
