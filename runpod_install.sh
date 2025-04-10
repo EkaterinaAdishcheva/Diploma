@@ -22,7 +22,7 @@ pip install -r OneActor/requirements.txt
 pip install -r OneActor/requirements_add.txt
 deactivate oa_venv
 
-#DreamSIm
+#DreamSim
 python -m venv ds
 . ds/bin/activate
 pip install ipykernel
