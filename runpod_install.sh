@@ -40,3 +40,4 @@ sam2
 https://github.com/facebookresearch/sam2/blob/main/notebooks/image_predictor_example.ipynb
 https://github.com/facebookresearch/sam2/blob/main/notebooks/automatic_mask_generator_example.ipynb
 https://github.com/IDEA-Research/GroundingDINO/
+https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb#scrollTo=aCH4p1dtyaXX
