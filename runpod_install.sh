@@ -42,3 +42,8 @@ https://github.com/facebookresearch/sam2/blob/main/notebooks/image_predictor_exa
 https://github.com/facebookresearch/sam2/blob/main/notebooks/automatic_mask_generator_example.ipynb
 https://github.com/IDEA-Research/GroundingDINO/
 https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb#scrollTo=aCH4p1dtyaXX
+
+python -m venv sam2
+. sam2/bin/activate
+pip install ipykernel
+python -m ipykernel install --user --name=sam2 --display-name "Python (sam2)"
