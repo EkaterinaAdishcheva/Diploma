@@ -54,6 +54,7 @@ cd checkpoints && \
 ./download_ckpts.sh && \
 cd ..
 pip install matplotlib
+pip install opencv-python
 deactivate sam2_venv
 
 https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb#scrollTo=aCH4p1dtyaXX
