@@ -344,13 +344,18 @@ def main():
     if config['t_seed'] is not None:
         set_seed(config['t_seed'])
 
+    use_mask = config['use_mask']
+    if use_mask:
+        weight_str = 'weight_mask'
+    else:
+        weight_str = 'weight'
     # Handle the repository creation
     if accelerator.is_main_process:
         if config['output_dir'] is not None:
             os.makedirs(config['output_dir'], exist_ok=True)
             os.makedirs(config['output_dir']+'/'+config['dir_name'], exist_ok=True)            
             os.makedirs(config['output_dir']+'/'+config['dir_name']+'/ckpt', exist_ok=True)
-            os.makedirs(config['output_dir']+'/'+config['dir_name']+'/weight', exist_ok=True)
+            os.makedirs(config['output_dir']+'/'+config['dir_name']+f'/{weight_str}', exist_ok=True)
         shutil.copyfile(args.config_path, config['output_dir']+'/'+config['dir_name']+'/config.yaml')
 
     # Load Models
@@ -406,7 +411,6 @@ def main():
     # Fire projector
     projector.requires_grad_(True)
 
-    use_mask = config['use_mask']
     
     if config['use_xformers']:
         if is_xformers_available():
@@ -440,6 +444,8 @@ def main():
         config=config,
         set='train',
     )
+
+    uuid = train_dataset.uuid
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=0
     )
@@ -545,9 +551,7 @@ def main():
                 # import pdb; pdb.set_trace()
                 # Convert images to latent space
                 latents = vae.encode(batch["pixel_values"][0].to(dtype=weight_dtype)).latent_dist.sample().detach()
-                mask_latents = vae.encode(batch["mask_pixel_values"][0].to(dtype=weight_dtype)).latent_dist.sample().detach()
                 latents = latents * vae.config.scaling_factor
-                mask_latents = mask_latents * vae.config.scaling_factor
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents)
                 noise[-1] = noise[0]    # aver is the same as target
@@ -558,8 +562,11 @@ def main():
     
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
-                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
-                noisy_mask_latents = noise_scheduler.add_noise(mask_latents, noise, timesteps)
+                if use_mask:
+                    mask_latents = vae.encode(batch["mask_pixel_values"][0].to(dtype=weight_dtype)).latent_dist.sample().detach()
+                    mask_latents = mask_latents * vae.config.scaling_factor
+                    noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+                    noisy_mask_latents = noise_scheduler.add_noise(mask_latents, noise, timesteps)
     
                 # time ids
                 def compute_time_ids(original_size, crops_coords_top_left):
@@ -670,9 +677,9 @@ def main():
                 global_step += 1
                 if global_step % config['save_steps'] == 0:
                     weight_name = (
-                        f"learned-projector-steps-{global_step}.pth"
+                        f"learned-projector-steps-{global_step}_{uuid}.pth"
                     )
-                    save_path = os.path.join(config['output_dir']+'/'+config['dir_name'], 'weight', weight_name)
+                    save_path = os.path.join(config['output_dir']+'/'+config['dir_name'], weight_str, weight_name)
 
                     save_progress(
                         projector,
@@ -684,9 +691,9 @@ def main():
                     best_step = initial_global_step + global_step
                     print(f'Best loss:{best_loss} @@@ Step:{best_step}')
                     weight_name = (
-                        f"best-learned-projector.pth"
+                        f"best-learned-projector_{uuid}.pth"
                     )
-                    save_path = os.path.join(config['output_dir']+'/'+config['dir_name'], 'weight', weight_name)
+                    save_path = os.path.join(config['output_dir']+'/'+config['dir_name'], weight_str, weight_name)
 
                     save_progress(
                         projector,

@@ -56,8 +56,13 @@ def main():
     for _, _, files in os.walk(data_root):
         break
     uuid = [f for f in files if 'source' in f and 'jpg' in f][0][-12:-4]
+
+    use_mask = config['use_mask']
     
-    out_root = config['pretrain_root']  +'/'+config['dir_name'] + config['out_file']
+    out_root = config['pretrain_root']  +'/'+config['dir_name'] + config['out_file'] 
+    if use_mask:
+        out_root += '_mask'
+    
     os.makedirs(out_root, exist_ok=True)
 
     shutil.copyfile(args.config_path, out_root+'/gen_config.yaml')
@@ -70,7 +75,13 @@ def main():
     xt_dic = load_pickle(config['data_root']+'/'+config['dir_name']+f'/xt_list_{uuid}.pkl')
     h_base = load_pickle(config['data_root']+'/'+config['dir_name']+f'/base/mid_list_{uuid}.pkl')
     h_tar = xt_dic['h_mid']
-
+    
+    use_mask = config['use_mask']
+    if use_mask:
+        weight_str = 'weight_mask'
+    else:
+        weight_str = 'weight'
+    
     # iterate over image list
     for img_num in range(len(config['add_prompts'])):
         _str = config['prompt'] + " " + config['add_prompts'][img_num]
@@ -105,7 +116,7 @@ def main():
                 steps = config['step_from']+config['step']*(i)
                 print(f"Using weights from step (steps)")
                 with torch.no_grad():
-                    projector_path = config['pretrain_root'] +'/'+config['dir_name'] + f'/weight/learned-projector-steps-{steps}.pth'
+                    projector_path = config['pretrain_root'] +'/'+config['dir_name'] + f'/{weight_str}/learned-projector-steps-{steps}_{uuid}.pth'
                     delta_emb_all = projector_inference(projector_path, h_tar, h_base, config['device']).to(config['device'])
 
                 delta_emb_aver = delta_emb_all[:-1].mean(dim=0)
@@ -128,7 +139,7 @@ def main():
                 image.save(out_root+f'/OneActor_'+config['file_names'][img_num]+'_step_'+str(steps)+'.jpg')
         elif config['only_step'] == 'best':
             with torch.no_grad():
-                projector_path = config['pretrain_root'] +'/'+config['dir_name'] + f'/weight/best-learned-projector.pth'
+                projector_path = config['pretrain_root'] +'/'+config['dir_name'] + f'/{weight_str}/best-learned-projector_{uuid}.pth'
                 delta_emb_all = projector_inference(projector_path, h_tar, h_base, config['device']).to(config['device'])
 
             delta_emb_aver = delta_emb_all[:-1].mean(dim=0) # [2048]
@@ -153,7 +164,7 @@ def main():
             for steps in steps_list:
                 print(f"Using weights from step {steps}")
                 with torch.no_grad():
-                    projector_path = config['pretrain_root'] +'/'+config['dir_name'] + f'/weight/learned-projector-steps-{steps}.pth'
+                    projector_path = config['pretrain_root'] +'/'+config['dir_name'] + f'/{weight_str}/learned-projector-steps-{steps}_{uuid}.pth'
                     delta_emb_all = projector_inference(projector_path, h_tar, h_base, config['device']).to(config['device'])
 
                 delta_emb_aver = delta_emb_all[:-1].mean(dim=0) # [2048]
