@@ -52,6 +52,11 @@ def main():
         config = yaml.safe_load(f)
 
     # make dir and initialize
+    data_root = config['data_root'] + "/" + config['dir_name']
+    for _, _, files in os.walk(data_root):
+        break
+    uuid = [f for f in files if 'source' in f and 'jpg' in f][0][-12:-4]
+    
     out_root = config['pretrain_root']  +'/'+config['dir_name'] + config['out_file']
     os.makedirs(out_root, exist_ok=True)
 
@@ -62,8 +67,8 @@ def main():
     pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
 
     # load cluster information
-    xt_dic = load_pickle(config['data_root']+'/'+config['dir_name']+'/xt_list.pkl')
-    h_base = load_pickle(config['data_root']+'/'+config['dir_name']+'/base/mid_list.pkl')
+    xt_dic = load_pickle(config['data_root']+'/'+config['dir_name']+f'/xt_list_{uuid}.pkl')
+    h_base = load_pickle(config['data_root']+'/'+config['dir_name']+f'/base/mid_list_{uuid}.pkl')
     h_tar = xt_dic['h_mid']
 
     # iterate over image list
@@ -76,7 +81,7 @@ def main():
             config['prompt'] + " " + config['add_prompts'][img_num], negative_prompt=config['neg_prompts'][img_num],
             num_inference_steps=config['inference_steps'], guidance_scale=config['eta_1'], generator=generator)
         image = image.images[0]
-        image.save(out_root+'/original_'+config['file_names'][img_num]+'_sdxl.jpg')
+        image.save(out_root+'/original_'+config['file_names'][img_num]+f'_sdxl_{uuid}.jpg')
 
         # perform step-wise guidance
         select_steps = config['select_steps']
@@ -167,7 +172,7 @@ def main():
                     config['neg_prompts'][img_num],
                     config, oneactor_extra_config)
                 image = image.images[0]
-                image.save(out_root+f'/OneActor_'+config['file_names'][img_num]+'_step_'+str(steps)+'.jpg')
+                image.save(out_root+f'/OneActor_'+config['file_names'][img_num]+'_step_'+str(steps)+'_'+uuid+'.jpg')
 
 if __name__ == '__main__':
     main()

@@ -8,6 +8,7 @@ import pickle
 import json
 import shutil
 import sys
+import uuid
 
 sys.path.append("./diffusers")
 
@@ -43,6 +44,9 @@ def decode_and_cat(latent_list, pipeline):
 
 if __name__ == '__main__':
     # get environment configs
+    uuid = uuid.uuid4()
+    uuid = str(uuid)[0:8]
+
     with open("PATH.json","r") as f:
         ENV_CONFIGS = json.load(f)
     # get user configs
@@ -53,7 +57,8 @@ if __name__ == '__main__':
         config = yaml.safe_load(f)
     device = config['device']
     pipeline = DiffusionPipeline.from_pretrained(ENV_CONFIGS['paths']['sdxl_path']).to(device)
-    prompt = config['source_prompt']
+    prompt = config['source_prompt'] + " " + config['add_source_prompt']
+    print(f"Source prompt: {prompt}")
     guidance_scale = config['guidance_scale']
     steps = config['steps']
     generator = torch.manual_seed(config['g_seed'])
@@ -70,12 +75,12 @@ if __name__ == '__main__':
                                                     oneactor_save=True)
     # save the target image
     image = image.images[0]
-    image.save(data_root+'/source.jpg')
+    image.save(data_root+f'/source_{uuid}.jpg')
     # save feature h and latent z
     xt_list = [_.cpu() for _ in xt_list_]
     mid = [_.cpu() for _ in mid_]
     save_pkl = {'xt':xt_list, 'prompt_embed':prompt_embeds.cpu(), 'h_mid': mid}
-    with open(data_root+'/xt_list.pkl', 'wb') as f:
+    with open(data_root+f'/xt_list_{uuid}.pkl', 'wb') as f:
         pickle.dump(save_pkl, f)
     # generate auxiliary images and data
     if config['gen_base'] > 0:
@@ -87,7 +92,7 @@ if __name__ == '__main__':
                                                             num_inference_steps=steps, guidance_scale=guidance_scale, generator=generator,
                                                             oneactor_save=True)
             image = image.images[0]
-            image.save(data_root+f'/base/base{i}.jpg')
+            image.save(data_root+f'/base/base{i}_{uuid}.jpg')
             mid_last_base.append(mid_[-1].cpu())
-        with open(data_root+'/base/mid_list.pkl', 'wb') as f:
+        with open(data_root+f'/base/mid_list_{uuid}.pkl', 'wb') as f:
             pickle.dump(mid_last_base, f)

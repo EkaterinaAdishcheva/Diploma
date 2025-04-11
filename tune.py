@@ -190,9 +190,16 @@ class OneActorDataset(Dataset):
         self.flip_p = flip_p
         self.neg_num = config['neg_num']
 
+        for _, _, files in os.walk(self.data_root):
+            break
+
+        self.uuid = [f for f in files if 'source' in f and 'jpg' in f][0][-12:-4]
+
         self.image_paths = [os.path.join(self.data_root, file_path) for file_path in os.listdir(self.data_root) if os.path.splitext(file_path)[1] == '.jpg']
+        self.mask_image_paths = [f[:-4] + "_mask.png" for f in self.image_paths]
         self.base_root = self.data_root + '/base'
         self.base_paths = [os.path.join(self.base_root, file_path) for file_path in os.listdir(self.base_root) if os.path.splitext(file_path)[1] == '.jpg']
+        self.mask_base_paths = [f[:-4] + "_mask.png" for f in self.base_paths]
 
         self.num_images = len(self.image_paths)
         self.num_base = len(self.base_paths)
@@ -215,13 +222,13 @@ class OneActorDataset(Dataset):
             self.templates = imagenet_style_templates_small
         self.flip_transform = transforms.RandomHorizontalFlip(p=self.flip_p)    # randomly flip images
 
-        with open(self.data_root+'/xt_list.pkl', 'rb') as f:
+        with open(self.data_root+f'/xt_list_{self.uuid}.pkl', 'rb') as f:
             xt_dic = pickle.load(f)
 
         self.h_mid = xt_dic['h_mid']
         self.prompt_embed = xt_dic['prompt_embed']
 
-        with open(self.base_root+'/mid_list.pkl', 'rb') as f:
+        with open(self.base_root+f'/mid_list_{self.uuid}.pkl', 'rb') as f:
             self.base_mid = pickle.load(f)
 
 
@@ -232,45 +239,67 @@ class OneActorDataset(Dataset):
         example = {}
 
         img_paths = []
+        msk_paths = []
         h_mid_list = []
         # target samples
-        target_img_path = random.choice(self.image_paths)
+        target_img_path, mask_target_img_path = random.choice(list(
+            zip(self.image_paths, self.mask_image_paths))
+        )
         img_paths.append(target_img_path)
-        print(target_img_path)
+        msk_paths.append(mask_target_img_path)
         h_mid_list.append(self.h_mid[-1])
         # base samples
         for i in range(self.neg_num):
             ind = random.randint(0, len(self.base_paths)-1)
-            base_img_path = self.base_paths[ind]
-            img_paths.append(base_img_path)
+            img_paths.append(self.base_paths[ind])
+            msk_paths.append(self.mask_base_paths[ind])
             h_mid_list.append(self.base_mid[ind])
         h_mid_list.append(random.choice(h_mid_list))
         
         img_tensors = []
+        mask_tensor = []
         text_list = []
-        for img_path in img_paths:
+        for img_path, mask_path in zip(img_paths, msk_paths):
 
             image = Image.open(img_path)
 
             if not image.mode == "RGB":
                 image = image.convert("RGB")
             # default to score-sde preprocessing
-            img = np.array(image).astype(np.uint8)
-
-            image = Image.fromarray(img)
+            image = np.array(image).astype(np.uint8)
+            image = Image.fromarray(image)
             image = image.resize((self.size, self.size), resample=self.interpolation)
-            image = self.flip_transform(image)
+            image_f = self.flip_transform(image)
+            flip_ind = image_f != image
+            image = image_f
             image = np.array(image).astype(np.uint8)
             image = (image / 127.5 - 1.0).astype(np.float32)
+
             img_tensors.append(torch.from_numpy(image).permute(2, 0, 1))
 
+            mask = Image.open(mask_path)
+            if not mask.mode == "RGB":
+                mask = mask.convert("RGB")
+            mask = np.array(mask).astype(np.uint8)
+            if flip_ind:
+                mask = mask[:,::-1]
+            # default to score-sde preprocessing
+
+            mask = Image.fromarray(mask)
+            mask = mask.resize((self.size, self.size), resample=self.interpolation)
+            mask = np.array(mask).astype(np.uint8)
+            mask = (mask / 127.5 - 1.0).astype(np.float32)
+ 
+            mask_tensor.append(torch.from_numpy(mask).permute(2, 0, 1))
+
             text = random.choice(self.templates).format(self.base_condition)
-            print(text)
             text_list.append(text)
         img_tensors.append(img_tensors[0])
+        mask_tensor.append(mask_tensor[0])
         text_list.append(text_list[0])
 
         example["pixel_values"] = torch.stack(img_tensors)
+        example["mask_pixel_values"] = torch.stack(mask_tensor)
         example['text'] = text_list
         example['base'] = self.base_condition
         example['h_mid'] = torch.stack(h_mid_list)
@@ -279,12 +308,6 @@ class OneActorDataset(Dataset):
     
     
 def main():
-    zone = np.zeros(shape=(5, 4, 128,128))
-    for i1 in range(5):
-        for i2 in range(4):
-            for i in range(128):
-                for j in range(128):
-                    zone[i1, i2, i,j] = 1/(1 + np.e**(-((j-64)/32)**2 - ((i-48)/32)**2)) * (1 - 1/(1 + np.e**(-((j-64)/32)**2 -((i-48)/32)**2))) * 4
     
     # get environment configs
     with open("PATH.json","r") as f:
@@ -383,7 +406,8 @@ def main():
     # Fire projector
     projector.requires_grad_(True)
 
-
+    use_mask = config['use_mask']
+    
     if config['use_xformers']:
         if is_xformers_available():
             import xformers
@@ -448,7 +472,6 @@ def main():
         weight_dtype = torch.float16
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
-
     # Move vae and unet to device and cast to weight_dtype
 
     
@@ -512,7 +535,6 @@ def main():
         # Only show the progress bar once on each machine.
         disable=not accelerator.is_local_main_process,
     )
-    zone = torch.tensor(zone, device=device).float()
     
     best_loss = 1000.0
     for epoch in range(first_epoch, config['epochs']):
@@ -523,9 +545,9 @@ def main():
                 # import pdb; pdb.set_trace()
                 # Convert images to latent space
                 latents = vae.encode(batch["pixel_values"][0].to(dtype=weight_dtype)).latent_dist.sample().detach()
-
+                mask_latents = vae.encode(batch["mask_pixel_values"][0].to(dtype=weight_dtype)).latent_dist.sample().detach()
                 latents = latents * vae.config.scaling_factor
-
+                mask_latents = mask_latents * vae.config.scaling_factor
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents)
                 noise[-1] = noise[0]    # aver is the same as target
@@ -533,11 +555,12 @@ def main():
                 # Sample a random timestep for each image
                 timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
                 timesteps = timesteps.long()
-
+    
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
-
+                noisy_mask_latents = noise_scheduler.add_noise(mask_latents, noise, timesteps)
+    
                 # time ids
                 def compute_time_ids(original_size, crops_coords_top_left):
                     # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
@@ -551,7 +574,7 @@ def main():
                 crops_coords_top_left = (0, 0)
                 add_time_ids = compute_time_ids(original_size, crops_coords_top_left).repeat(bsz, 1).to(accelerator.device)
                 unet_added_conditions = {"time_ids": add_time_ids}
-
+    
                 text_encoders = [text_encoder_one, text_encoder_two]
                 tokenizers = [tokenizer_one, tokenizer_two]
                 # Get the text embedding for conditioning
@@ -562,10 +585,10 @@ def main():
                 for b_s in range(bsz): # 1*target+n*base+1*aver
                     prompt = batch['text'][b_s][0] # str
                     prompt_embeds_list = []
-
+    
                     first = 1
                     for tokenizer, text_encoder in zip(tokenizers, text_encoders):
-
+    
                         text_inputs = tokenizer(
                             prompt,
                             padding="max_length",
@@ -587,27 +610,27 @@ def main():
                         prompt_embeds = prompt_embeds.hidden_states[-2]
                         prompt_embeds_list.append(prompt_embeds)
                     prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)    # tensor(1, 77, 2048)
-
+    
                     if b_s == bsz-1:
                         delta_emb_ = delta_emb_aver
                     else:
                         delta_emb_ = delta_emb[b_s:b_s+1]
                     prompt_embeds[:, base_token_id, :] = prompt_embeds[:, base_token_id, :] + delta_emb_
-
+    
                     prompt_embeds_batch_list.append(prompt_embeds)
                     add_text_embeds_batch_list.append(pooled_prompt_embeds)
                 
                 prompt_embeds = torch.concat(prompt_embeds_batch_list, dim=0)
                 add_text_embeds = torch.concat(add_text_embeds_batch_list, dim=0).to(accelerator.device)
-
+    
                 unet_added_conditions.update({"text_embeds": add_text_embeds})
                 prompt_embeds = prompt_embeds.to(accelerator.device)
-
-
+    
+    
                 # Predict the noise residual
                 model_pred = unet(noisy_latents, timesteps, encoder_hidden_states=prompt_embeds, added_cond_kwargs=unet_added_conditions).sample
-
-
+    
+    
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
                     target = noise
@@ -615,19 +638,28 @@ def main():
                     target = noise_scheduler.get_velocity(latents, noise, timesteps)
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
-                print(f"model_pred.float().size() = {model_pred.float().size()}")
-                print(f"target.float().size() = {target.float().size()}")
                 
+                if use_mask:
+                    loss_target = F.mse_loss(model_pred[:1].float() * noisy_mask_latents[:1].float(),
+                                             target[:1].float() * noisy_mask_latents[:1].float(), reduction="mean")
+                    loss_base = F.mse_loss(model_pred[1:-1].float() * noisy_mask_latents[1:-1].float(),
+                                             target[1:-1].float() * noisy_mask_latents[1:-1].float(), reduction="mean")
+                    loss_aver = F.mse_loss(model_pred[-1:].float() * noisy_mask_latents[-1:].float(),
+                                             target[-1:].float() * noisy_mask_latents[-1:].float(), reduction="mean")
+                else:
+                    loss_target = F.mse_loss(model_pred[:1].float(),
+                                             target[:1].float(), reduction="mean")
+                    loss_base = F.mse_loss(model_pred[1:-1].float(),
+                                             target[1:-1].float(), reduction="mean")
+                    loss_aver = F.mse_loss(model_pred[-1:].float(),
+                                             target[-1:].float(), reduction="mean")
                 
-                loss_target = F.mse_loss(model_pred[:1].float() * zone[:1], target[:1].float() * zone[:1], reduction="mean")
-                loss_base = F.mse_loss(model_pred[1:-1].float() * zone[1:-1], target[1:-1].float() * zone[1:-1], reduction="mean")
-                loss_aver = F.mse_loss(model_pred[-1:].float() * zone[-1:], target[-1:].float() * zone[-1:], reduction="mean")
-                loss = loss_target + config['lambda1'] * loss_base + config['lambda2'] * loss_aver
+                loss = loss_target + config['lambda1'] * loss_base + config['lambda2'] * loss_aver    
                 avg_loss = accelerator.gather(loss.repeat(config['batch_size'])).mean()
                 train_loss += avg_loss.item()
-
+    
                 accelerator.backward(loss)
-
+    
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()

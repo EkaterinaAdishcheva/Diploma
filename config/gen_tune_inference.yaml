@@ -11,22 +11,25 @@ device: 'cuda'
 
 # GENERATE
 
-# source_prompt: 'A handsome teenager wearing shorts and canvas shoes, digital painting'
-# source_neg_prompt: ''
-# base: 'teenager'
-# promot: 'A handsome teenager wearing shorts and canvas shoes, digital painting'
-# dir_name: 'a_handsome_teenager_wearing_shorts_and_canvas_shoes_digital_painting'
-# add_prompts: ['a city as background',
-#    'the Effel Tower as a background',
-#    'the Statue of liberty as a background',
-#    'eating a burger',
-#    'wearing sunglasses']
-# neg_prompts: ['', '', '', '', '']
-# file_names: ['a_city_as_background',
-#    'the_effel_tower_as_a_background',
-#    'the_statue_of_liberty_as_a_background',
-#    'eating_a_burger',
-#    'wearing_sunglasses']
+source_prompt: 'A handsome teenager wearing shorts and canvas shoes, digital painting'
+prompt: 'A handsome teenager wearing shorts and canvas shoes, digital painting'
+add_source_prompt: 'contrast solid background'
+source_neg_prompt: ''
+base: 'teenager'
+base_condition: 'teenager'
+promot: 'A handsome teenager wearing shorts and canvas shoes, digital painting'
+dir_name: 'a_handsome_teenager_wearing_shorts_and_canvas_shoes_digital_painting'
+add_prompts: ['a city as background',
+   'the Effel Tower as a background',
+   'the Statue of liberty as a background',
+   'eating a burger',
+   'wearing sunglasses']
+neg_prompts: ['', '', '', '', '']
+file_names: ['a_city_as_background',
+   'the_effel_tower_as_a_background',
+   'the_statue_of_liberty_as_a_background',
+   'eating_a_burger',
+   'wearing_sunglasses']
 
 # source_prompt: 'A young woman with long wavy hair wairing sundress, photo realistic' # CHANGE HERE, MAKE SURE IT CONTAINS THE BASE WORD
 # dir_name: 'a_young_woman_with_long_wavy_hair_wairing_sundress_photo_realistic'
@@ -44,24 +47,23 @@ device: 'cuda'
 #    'sitting_at_cafe',
 #    'leaning_on_a_fence']
 
-source_prompt: 'A rugger adventurer with tousled hair, comic book stile' # CHANGE HERE, MAKE SURE IT CONTAINS THE BASE WORD
-dir_name: 'a_rugger_adventurer_with_tousled_hair_comic_book_stile'
-base_condition: 'adventurer'# CHANGE HERE
-prompt: 'A rugger adventurer with tousled hair, comic book stile'
-base: 'adventurer'
-source_neg_prompt: ''
-add_prompts: ['a city as background',
-   'the Effel Tower as a background',
-   'the Statue of liberty as a background',
-   'eating a burger',
-   'wearing sunglasses']
-neg_prompts: ['', '', '', '', '']
-file_names: ['a_city_as_background',
-   'the_effel_tower_as_a_background',
-   'the_statue_of_liberty_as_a_background',
-   'eating_a_burger',
-   'wearing_sunglasses']
-
+# source_prompt: 'A rugger adventurer with tousled hair, comic book stile' # CHANGE HERE, MAKE SURE IT CONTAINS THE BASE WORD
+# dir_name: 'a_rugger_adventurer_with_tousled_hair_comic_book_stile'
+# base_condition: 'adventurer'# CHANGE HERE
+# prompt: 'A rugger adventurer with tousled hair, comic book stile'
+# base: 'adventurer'
+# source_neg_prompt: ''
+# add_prompts: ['a city as background',
+#    'the Effel Tower as a background',
+#    'the Statue of liberty as a background',
+#    'eating a burger',
+#    'wearing sunglasses']
+# neg_prompts: ['', '', '', '', '']
+# file_names: ['a_city_as_background',
+#    'the_effel_tower_as_a_background',
+#    'the_statue_of_liberty_as_a_background',
+#    'eating_a_burger',
+#    'wearing_sunglasses']
 
 steps: 30
 guidance_scale: 7.5
@@ -81,6 +83,7 @@ save_steps: 10
 checkpointing_steps: 500
 resume_from_checkpoint: None  # True or None
 xt_to_use: -1
+use_mask : True
 
 # env config
 use_xformers: True

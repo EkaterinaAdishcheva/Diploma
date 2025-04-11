@@ -1206,7 +1206,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             # remove `lora_scale` from each PEFT layer
             unscale_lora_layers(self, lora_scale)
 
-        print(f"sample.size() = {sample.size()}, mid_save.size() = {mid_save.size()}")
         if not return_dict:
             if oneactor_save:
                 return (sample, mid_save)
