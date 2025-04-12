@@ -323,7 +323,7 @@ def main():
     accelerator_project_config = ProjectConfiguration(project_dir=config['output_dir']+'/'+config['dir_name'], logging_dir='logs')
     accelerator = Accelerator(
         gradient_accumulation_steps=1,
-        mixed_precision="fp16",
+        mixed_precision="no",
         log_with="tensorboard",
         project_config=accelerator_project_config,
     )
