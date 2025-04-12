@@ -1,9 +1,10 @@
-vcd /workspace/
+cd /workspace/
 python -m venv oa_venv
 . oa_venv/bin/activate
 python -m pip install --upgrade pip
 pip install ipykernel
 python -m ipykernel install --user --name=oa_venv --display-name "Python (oa_venv)"
+
 
 mkdir /workspace/.ssh
 ssh-keygen -f /workspace/.ssh/id_rsa
@@ -33,6 +34,8 @@ git clone https://github.com/ssundaram21/dreamsim.git
 pip install -r dreamsim/requirements.txt
 cp OneActor/ds_metrics.ipynb dreamsim
 
+
+
 pip install torch
 pip install Pillow
 deactivate ds
@@ -42,6 +45,7 @@ https://github.com/facebookresearch/sam2/blob/main/notebooks/automatic_mask_gene
 ? https://github.com/IDEA-Research/GroundingDINO/
 
 deactivate ds
+
 python -m venv sam2_venv
 . sam2_venv/bin/activate
 pip install ipykernel
@@ -58,3 +62,27 @@ pip install opencv-python
 deactivate sam2_venv
 
 https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb#scrollTo=aCH4p1dtyaXX
+
+
+## fast run
+. oa_venv/bin/activate
+python -m ipykernel install --user --name=oa_venv --display-name "Python (oa_venv)"
+deactivate oa_venv
+
+. ds/bin/activate
+python -m ipykernel install --user --name=ds --display-name "Python (ds)"
+deactivate ds
+
+. sam2_venv/bin/activate
+python -m ipykernel install --user --name=sam2_venv --display-name "Python (sam2_venv)"
+deactivate sam2_venv
+
+cp /workspace/.ssh/* /root/.ssh/
+chmod 400 /root/.ssh/id_rsa.pub
+chmod 400 /root/.ssh/id_rsa
+
+git config --global user.email "you@example.com"
+git config --global user.name "Your Name"
+
+. oa_venv/bin/activate
+cd OneActor

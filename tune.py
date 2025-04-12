@@ -289,6 +289,7 @@ class OneActorDataset(Dataset):
             mask = mask.resize((self.size, self.size), resample=self.interpolation)
             mask = np.array(mask).astype(np.uint8)
             mask = (mask / 127.5 - 1.0).astype(np.float32)
+            mask *= 100
  
             mask_tensor.append(torch.from_numpy(mask).permute(2, 0, 1))
 
@@ -322,7 +323,7 @@ def main():
     accelerator_project_config = ProjectConfiguration(project_dir=config['output_dir']+'/'+config['dir_name'], logging_dir='logs')
     accelerator = Accelerator(
         gradient_accumulation_steps=1,
-        mixed_precision='no',
+        mixed_precision="fp16",
         log_with="tensorboard",
         project_config=accelerator_project_config,
     )
@@ -567,6 +568,9 @@ def main():
                     mask_latents = mask_latents * vae.config.scaling_factor
                     noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
                     noisy_mask_latents = noise_scheduler.add_noise(mask_latents, noise, timesteps)
+                    noisy_mask_latents[:,1] = noisy_mask_latents[:,0]
+                    noisy_mask_latents[:,2] = noisy_mask_latents[:,0]
+                    noisy_mask_latents[:,3] = noisy_mask_latents[:,0]
     
                 # time ids
                 def compute_time_ids(original_size, crops_coords_top_left):
@@ -645,7 +649,9 @@ def main():
                     target = noise_scheduler.get_velocity(latents, noise, timesteps)
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
-                
+
+                print(model_pred)
+                print(noisy_mask_latents)
                 if use_mask:
                     loss_target = F.mse_loss(model_pred[:1].float() * noisy_mask_latents[:1].float(),
                                              target[:1].float() * noisy_mask_latents[:1].float(), reduction="mean")
