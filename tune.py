@@ -186,6 +186,7 @@ class OneActorDataset(Dataset):
         self.data_root = config['data_root'] + "/" + config['dir_name']
         self.learnable_property = config['concept_type']
         self.size = config['size']
+        self.latent_size = 128
         self.base_condition = config['base_condition']
         self.flip_p = flip_p
         self.neg_num = config['neg_num']
@@ -286,10 +287,10 @@ class OneActorDataset(Dataset):
             # default to score-sde preprocessing
 
             mask = Image.fromarray(mask)
-            mask = mask.resize((self.size, self.size), resample=self.interpolation)
+            mask = mask.resize((self.latent_size, self.latent_size), resample=self.interpolation)
             mask = np.array(mask).astype(np.uint8)
-            mask = (mask / 127.5 - 1.0).astype(np.float32)
-            mask *= 100
+            mask = (mask / 255 ).astype(np.float32)
+            mask = np.concatenate((mask, mask[:,:,:1]), axis=2)
  
             mask_tensor.append(torch.from_numpy(mask).permute(2, 0, 1))
 
@@ -564,13 +565,9 @@ def main():
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
                 if use_mask:
-                    mask_latents = vae.encode(batch["mask_pixel_values"][0].to(dtype=weight_dtype)).latent_dist.sample().detach()
-                    mask_latents = mask_latents * vae.config.scaling_factor
+                    mask_latents = batch["mask_pixel_values"][0].to(dtype=weight_dtype)
                     noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
                     noisy_mask_latents = noise_scheduler.add_noise(mask_latents, noise, timesteps)
-                    noisy_mask_latents[:,1] = noisy_mask_latents[:,0]
-                    noisy_mask_latents[:,2] = noisy_mask_latents[:,0]
-                    noisy_mask_latents[:,3] = noisy_mask_latents[:,0]
     
                 # time ids
                 def compute_time_ids(original_size, crops_coords_top_left):
@@ -650,8 +647,6 @@ def main():
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
-                print(model_pred)
-                print(noisy_mask_latents)
                 if use_mask:
                     loss_target = F.mse_loss(model_pred[:1].float() * noisy_mask_latents[:1].float(),
                                              target[:1].float() * noisy_mask_latents[:1].float(), reduction="mean")
