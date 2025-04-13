@@ -180,7 +180,7 @@ class OneActorDataset(Dataset):
         self,
         target_dir,
         config,
-        repeats=100,
+        repeats=50,
         interpolation="bicubic",
         flip_p=0.5,
         set="train",
@@ -189,15 +189,18 @@ class OneActorDataset(Dataset):
         self.learnable_property = config['concept_type']
         self.size = config['size']
         self.latent_size = 128
-        self.base_condition = config['base_condition']
+        self.base_condition = config['base']
         self.flip_p = flip_p
         self.neg_num = config['neg_num']
 
 
-        self.image_paths = [os.path.join(self.target_root, file_path) for file_path in os.listdir(self.target_root) if os.path.splitext(file_path)[1] == '.jpg']
+        self.image_paths = [
+            os.path.join(self.target_root, file_path) for file_path in os.listdir(self.target_root) if os.path.splitext(file_path)[1] == '.jpg']
         self.mask_image_paths = [f[:-4] + "_mask.png" for f in self.image_paths]
         self.base_root = self.target_root + '/base'
-        self.base_paths = [os.path.join(self.base_root, file_path) for file_path in os.listdir(self.base_root) if os.path.splitext(file_path)[1] == '.jpg']
+        print(self.base_root)
+        self.base_paths = [
+            os.path.join(self.base_root, file_path) for file_path in os.listdir(self.base_root) if os.path.splitext(file_path)[1] == '.jpg']
         self.mask_base_paths = [f[:-4] + "_mask.png" for f in self.base_paths]
 
         self.num_images = len(self.image_paths)
@@ -221,13 +224,13 @@ class OneActorDataset(Dataset):
             self.templates = imagenet_style_templates_small
         self.flip_transform = transforms.RandomHorizontalFlip(p=self.flip_p)    # randomly flip images
 
-        with open(self.target_root+f'/xt_list_{self.uuid}.pkl', 'rb') as f:
+        with open(self.target_root+f'/xt_list.pkl', 'rb') as f:
             xt_dic = pickle.load(f)
 
         self.h_mid = xt_dic['h_mid']
         self.prompt_embed = xt_dic['prompt_embed']
 
-        with open(self.base_root+f'/mid_list_{self.uuid}.pkl', 'rb') as f:
+        with open(self.base_root+f'/mid_list.pkl', 'rb') as f:
             self.base_mid = pickle.load(f)
 
 
@@ -319,7 +322,24 @@ def main():
     with open(args.config_path, "r") as f:
         config = yaml.safe_load(f)
     device = config['device']
-    accelerator_project_config = ProjectConfiguration(project_dir=config['output_dir']+'/'+config['dir_name'], logging_dir='logs')
+
+    
+    target_dir = config['experiments_dir']+'/'+config['target_dir']
+    for _, tgt_dirs, _ in os.walk(target_dir):
+        break
+    if config['target_uuid'] == 'no':
+        target_uuid = tgt_dirs[0][4:]
+    else:
+        if 'exp_' + target_uuid not in tgt_dirs:
+            print("No target images") 
+            return
+        target_uuid = config['target_uuid']
+
+    print(f"target_uuid = {target_uuid}")
+
+    target_dir += f"/exp_{target_uuid}"
+
+    accelerator_project_config = ProjectConfiguration(project_dir=target_dir, logging_dir='logs')
     accelerator = Accelerator(
         gradient_accumulation_steps=1,
         mixed_precision="no",
@@ -345,27 +365,16 @@ def main():
         set_seed(config['t_seed'])
     use_mask = config['use_mask']
 
-    target_dir = config['experiments_dir']+'/'+config['target_dir']
-    for _, tgt_dirs, _ in os.walk(target_dir):
-        break
-    if config['target_uuid'] == 'no':
-        target_uuid = tgt_dirs[0][4:]
-    else:
-        if 'exp_' + target_uuid not in tgt_dirs:
-            print("No target images") 
-            return
-        target_uuid = config['target_uuid']
-
-    target_dir += "/exp_{target_uuid}"
     # Handle the repository creation
-    uuid = uuid.uuid4()
-    uuid = str(uuid)[0:8]
-    output_dir = f"{target_dir}/output_{uuid}"
+    train_uuid = uuid.uuid4()
+    train_uuid = str(train_uuid)[0:8]
+    output_dir = f"{target_dir}/output_{train_uuid}"
+    print(output_dir)
     if accelerator.is_main_process:
         os.makedirs(output_dir, exist_ok=True)
         os.makedirs(f"{output_dir}/ckpt", exist_ok=True)
         os.makedirs(f"{output_dir}/weight", exist_ok=True)
-        shutil.copyfile(args.config_path, f"{output_dir}/config_{uuid}.yaml")
+        shutil.copyfile(args.config_path, f"{output_dir}/config_{train_uuid}.yaml")
 
     # Load Models
     pretrained_model_name_or_path = ENV_CONFIGS['paths']['sdxl_path']
@@ -455,7 +464,6 @@ def main():
         set='train',
     )
 
-    uuid = train_dataset.uuid
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=0
     )
@@ -689,7 +697,7 @@ def main():
                 global_step += 1
                 if global_step % config['save_steps'] == 0:
                     weight_name = (
-                        f"learned-projector-steps-{global_step}_{uuid}.pth"
+                        f"learned-projector-steps-{global_step}.pth"
                     )
                     save_path = os.path.join(output_dir, 'weight', weight_name)
 
@@ -703,7 +711,7 @@ def main():
                     best_step = initial_global_step + global_step
                     print(f'Best loss:{best_loss} @@@ Step:{best_step}')
                     weight_name = (
-                        f"best-learned-projector_{uuid}.pth"
+                        f"best-learned-projector.pth"
                     )
                     save_path = os.path.join(output_dir, 'weight', weight_name)
 

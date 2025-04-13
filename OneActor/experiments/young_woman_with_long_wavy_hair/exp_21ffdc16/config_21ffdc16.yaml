@@ -14,7 +14,7 @@ device: 'cuda'
 # target_dir: 'teenager_wearing_shorts_and_canvas_shoes'
 # add_target_prompt: 'contrast solid background'
 # target_neg_prompt: ''
-# base: 'teenager'
+# target_base: 'teenager'
 # add_prompts: ['a city as background',
 #    'the Effel Tower as a background',
 #    'the Statue of liberty as a background',
@@ -31,7 +31,7 @@ target_prompt: 'A young woman with long wavy hair wairing sundress, photo realis
 target_dir: 'young_woman_with_long_wavy_hair'
 add_target_prompt: ''
 target_neg_prompt: ''
-base: 'woman' # CHANGE HERE
+target_base: 'woman' # CHANGE HERE
 add_prompts: ['standing in wildflowers',
    'walking on sunset beach',
    'sitting at cafe',

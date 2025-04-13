@@ -65,24 +65,24 @@ if __name__ == '__main__':
     os.makedirs(experiments_dir, exist_ok=True)
     experiments_dir += "/" + config['target_dir']
     os.makedirs(experiments_dir, exist_ok=True)
-    uuid = uuid.uuid4()
-    uuid = str(uuid)[0:8]
-    experiments_dir += "/" + f'exp_{uuid}'
+    target_uuid = uuid.uuid4()
+    target_uuid = str(target_uuid)[0:8]
+    experiments_dir += "/" + f'exp_{target_uuid}'
     os.makedirs(experiments_dir, exist_ok=True)
     # copy the config
-    shutil.copyfile(opt.config_path, experiments_dir+f'/config_{uuid}.yaml')
+    shutil.copyfile(opt.config_path, experiments_dir+f'/config_{target_uuid}.yaml')
     # use original pipeline to prepare data
     image, xt_list_, prompt_embeds, mid_ = pipeline(prompt, neg_prompt=config['target_neg_prompt'], 
                                                     num_inference_steps=steps, guidance_scale=guidance_scale, generator=generator,
                                                     oneactor_save=True)
     # save the target image
     image = image.images[0]
-    image.save(experiments_dir+f'/source_.jpg')
+    image.save(experiments_dir+'/target.jpg')
     # save feature h and latent z
     xt_list = [_.cpu() for _ in xt_list_]
     mid = [_.cpu() for _ in mid_]
     save_pkl = {'xt':xt_list, 'prompt_embed':prompt_embeds.cpu(), 'h_mid': mid}
-    with open(experiments_dir+f'/xt_list_.pkl', 'wb') as f:
+    with open(experiments_dir+f'/xt_list.pkl', 'wb') as f:
         pickle.dump(save_pkl, f)
     # generate auxiliary images and data
     if config['gen_base'] > 0:
