@@ -1,0 +1,6 @@
+{
+    "paths":{
+        "base_path": "/workspace/OneActor",
+        "sdxl_path": "stabilityai/stable-diffusion-xl-base-1.0"
+    }
+}
