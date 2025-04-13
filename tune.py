@@ -545,6 +545,7 @@ def main():
     )
     
     best_loss = 1000.0
+    alphas_cumprod = noise_scheduler.alphas_cumprod.to(device=accelerator.device)
     for epoch in range(first_epoch, config['epochs']):
         projector.train()
         train_loss = 0.0
@@ -561,13 +562,15 @@ def main():
                 # Sample a random timestep for each image
                 timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
                 timesteps = timesteps.long()
-    
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
-                if use_mask:
+                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+    
+                if use_mask:            
                     mask_latents = batch["mask_pixel_values"][0].to(dtype=weight_dtype)
-                    noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
-                    noisy_mask_latents = noise_scheduler.add_noise(mask_latents, noise, timesteps)
+                    noisy_mask_latents = alphas_cumprod[timesteps].view(5,-1) * mask_latents.view(5,-1) \
+                        + ((1 - alphas_cumprod[timesteps].view(5,-1)) * torch.ones(size=mask_latents.size()).to(latents.device).view(5, -1))
+                    noisy_mask_latents = noisy_mask_latents.reshape(5, 4, 128, 128)
     
                 # time ids
                 def compute_time_ids(original_size, crops_coords_top_left):

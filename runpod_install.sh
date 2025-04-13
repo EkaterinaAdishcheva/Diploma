@@ -65,6 +65,7 @@ https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffuse
 
 
 ## fast run
+cd /workspace/
 . oa_venv/bin/activate
 python -m ipykernel install --user --name=oa_venv --display-name "Python (oa_venv)"
 deactivate oa_venv
