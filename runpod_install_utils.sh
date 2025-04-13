@@ -2,6 +2,7 @@
 cd /workspace/
 python -m venv ds
 . ds/bin/activate
+python -m pip install --upgrade pip
 pip install ipykernel
 python -m ipykernel install --user --name=ds --display-name "Python (ds)"
 git clone https://github.com/ssundaram21/dreamsim.git
@@ -15,6 +16,7 @@ deactivate ds
 #SAM2
 python -m venv sam2_venv
 . sam2_venv/bin/activate
+python -m pip install --upgrade pip
 pip install ipykernel
 python -m ipykernel install --user --name=sam2_venv --display-name "Python (sam2_venv)"
 git clone https://github.com/facebookresearch/sam2.git
