@@ -5,7 +5,6 @@ python -m venv oa_venv
 python -m pip install --upgrade pip
 pip install ipykernel
 python -m ipykernel install --user --name=oa_venv --display-name "Python (oa_venv)"
-git clone git@github.com:EkaterinaAdishcheva/OneActor.git
 pip install -r OneActor/OneActor/requirements.txt
 pip install -r OneActor/OneActor/requirements_add.txt
 deactivate oa_venv

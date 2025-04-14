@@ -9,6 +9,7 @@ import json
 import shutil
 import sys
 import uuid
+from datetime import datetime
 
 sys.path.append("./diffusers")
 
@@ -65,8 +66,11 @@ if __name__ == '__main__':
     os.makedirs(experiments_dir, exist_ok=True)
     experiments_dir += "/" + config['target_dir']
     os.makedirs(experiments_dir, exist_ok=True)
-    target_uuid = uuid.uuid4()
-    target_uuid = str(target_uuid)[0:8]
+    
+    now = datetime.now()
+    target_uuid = now.strftime("%y%m%d%H%M") # uuid.uuid4()
+    target_uuid= str(train_uuid)
+    
     experiments_dir += "/" + f'exp_{target_uuid}'
     os.makedirs(experiments_dir, exist_ok=True)
     # copy the config

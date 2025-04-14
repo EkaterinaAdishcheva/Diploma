@@ -52,47 +52,73 @@ def main():
         config = yaml.safe_load(f)
 
     # make dir and initialize
-    data_root = config['data_root'] + "/" + config['dir_name']
-    for _, _, files in os.walk(data_root):
+    tgt_dirs = []
+    target_dir = config['experiments_dir']+'/'+config['target_dir']
+    for _, tgt_dirs, _ in os.walk(target_dir):
         break
-    uuid = [f for f in files if 'source' in f and 'jpg' in f][0][-12:-4]
+        
+    if len(tgt_dirs) == 0:
+        print("Base image is not generated")
+        return
 
-    use_mask = config['use_mask']
-    
-    out_root = config['pretrain_root']  +'/'+config['dir_name'] + config['out_file'] 
-    if use_mask:
-        out_root += '_mask'
-    
-    os.makedirs(out_root, exist_ok=True)
+    if config['target_uuid'] == 'no':
+        target_uuid = tgt_dirs[0][4:]
+    else:
+        if 'exp_' + config['target_uuid'] not in tgt_dirs:
+            print("No target images") 
+            return
+        target_uuid = config['target_uuid']
 
-    shutil.copyfile(args.config_path, out_root+'/gen_config.yaml')
+    print(f"target_uuid = {target_uuid}")
+    target_dir += f"/exp_{target_uuid}"
+
+    del tgt_dirs
+    for _, tgt_dirs, _ in os.walk(target_dir):
+        break
+    if not tgt_dirs:
+        print("Train is not performed")
+        return
+
+    if config['model_uuid'] == 'no':
+        model_uuid = tgt_dirs[0][7:]
+    else:
+        if 'output_' + config['model_uuid'] not in tgt_dirs:
+            print("No trained model") 
+            return
+        model_uuid = config['model_uuid']
+    
+    out_root = target_dir + f"/output_{model_uuid}" 
+    
+    os.makedirs(f"{out_root}/inference", exist_ok=True)
+    print(f"Save inference in {out_root}/inference")
+
+    shutil.copyfile(args.config_path, out_root+f'/gen_config_{model_uuid}.yaml')
 
     # load sd pipeline
     pipeline = DiffusionPipeline.from_pretrained(ENV_CONFIGS['paths']['sdxl_path']).to(config['device'])
     pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
 
     # load cluster information
-    xt_dic = load_pickle(config['data_root']+'/'+config['dir_name']+f'/xt_list_{uuid}.pkl')
-    h_base = load_pickle(config['data_root']+'/'+config['dir_name']+f'/base/mid_list_{uuid}.pkl')
+    xt_dic = load_pickle(target_dir+'/xt_list.pkl')
+    h_base = load_pickle(target_dir+'/base/mid_list.pkl')
     h_tar = xt_dic['h_mid']
     
     use_mask = config['use_mask']
-    if use_mask:
-        weight_str = 'weight_mask'
-    else:
-        weight_str = 'weight'
     
     # iterate over image list
     for img_num in range(len(config['add_prompts'])):
-        _str = config['prompt'] + " " + config['add_prompts'][img_num]
+        _str = config['target_prompt'] + " " + config['add_prompts'][img_num]
         print(f"Generating prompt {_str}...")
         # original output by SDXL
         generator = torch.manual_seed(config['seed'])
         image = pipeline(
-            config['prompt'] + " " + config['add_prompts'][img_num], negative_prompt=config['neg_prompts'][img_num],
-            num_inference_steps=config['inference_steps'], guidance_scale=config['eta_1'], generator=generator)
+            config['target_prompt'] + " " + config['add_prompts'][img_num],
+            negative_prompt=config['target_neg_prompt'] + " " + config['neg_prompts'][img_num],
+            num_inference_steps=config['inference_steps'],
+            guidance_scale=config['eta_1'],
+            generator=generator)
         image = image.images[0]
-        image.save(out_root+'/original_'+config['file_names'][img_num]+f'_sdxl_{uuid}.jpg')
+        image.save(f"{out_root}/inference/{config['file_names'][img_num]}_sdxl.jpg")
 
         # perform step-wise guidance
         select_steps = config['select_steps']
@@ -107,7 +133,7 @@ def main():
             select_list = None
 
         # locate the base token id
-        token_id = find_token_ids(pipeline.tokenizer, config['prompt'] + " " + config['add_prompts'][img_num], config['base'])
+        token_id = find_token_ids(pipeline.tokenizer, config['target_prompt'] + " " + config['add_prompts'][img_num], config['base'])
         generator = torch.manual_seed(config['seed'])
         config['generator'] = generator
 
@@ -116,7 +142,7 @@ def main():
                 steps = config['step_from']+config['step']*(i)
                 print(f"Using weights from step (steps)")
                 with torch.no_grad():
-                    projector_path = config['pretrain_root'] +'/'+config['dir_name'] + f'/{weight_str}/learned-projector-steps-{steps}_{uuid}.pth'
+                    projector_path = f'{out_root}/weight/learned-projector-steps-{steps}.pth'
                     delta_emb_all = projector_inference(projector_path, h_tar, h_base, config['device']).to(config['device'])
 
                 delta_emb_aver = delta_emb_all[:-1].mean(dim=0)
@@ -132,14 +158,14 @@ def main():
 
                 image = pipeline_inference(
                     pipeline, 
-                    config['prompt'] + " " + config['add_prompts'][img_num],
-                    config['neg_prompts'][img_num],
+                    config['target_prompt'] + " " + config['add_prompts'][img_num],
+                    config['target_neg_prompt'] + " " + config['neg_prompts'][img_num],
                     config, oneactor_extra_config)
                 image = image.images[0]
-                image.save(out_root+f'/OneActor_'+config['file_names'][img_num]+'_step_'+str(steps)+'.jpg')
+                image.save(f"{out_root}/inference/{config['file_names'][img_num]}_step_{steps}.jpg")
         elif config['only_step'] == 'best':
             with torch.no_grad():
-                projector_path = config['pretrain_root'] +'/'+config['dir_name'] + f'/{weight_str}/best-learned-projector_{uuid}.pth'
+                projector_path = f'{out_root}/weight/best-learned-projector.pth'
                 delta_emb_all = projector_inference(projector_path, h_tar, h_base, config['device']).to(config['device'])
 
             delta_emb_aver = delta_emb_all[:-1].mean(dim=0) # [2048]
@@ -154,17 +180,17 @@ def main():
             }
             image = pipeline_inference(
                 pipeline,
-                config['prompt'] + " " + config['add_prompts'][img_num],
-                config['neg_prompts'][img_num],
+                config['target_prompt'] + " " + config['add_prompts'][img_num],
+                config['target_neg_prompt'] + " " + config['neg_prompts'][img_num],
                 config, oneactor_extra_config)
             image = image.images[0]
-            image.save(out_root+f'/OneActor_'+config['file_names'][img_num]+'_step_'+'best'+'.jpg')
+            image.save(f"{out_root}/inference/{config['file_names'][img_num]}_step_best.jpg")
         else:
             steps_list = config['only_step']
             for steps in steps_list:
                 print(f"Using weights from step {steps}")
                 with torch.no_grad():
-                    projector_path = config['pretrain_root'] +'/'+config['dir_name'] + f'/{weight_str}/learned-projector-steps-{steps}_{uuid}.pth'
+                    projector_path = f'{out_root}/weight/learned-projector-steps-{steps}.pth'
                     delta_emb_all = projector_inference(projector_path, h_tar, h_base, config['device']).to(config['device'])
 
                 delta_emb_aver = delta_emb_all[:-1].mean(dim=0) # [2048]
@@ -179,11 +205,11 @@ def main():
                 }
                 image = pipeline_inference(
                     pipeline, 
-                    config['prompt'] + " " + config['add_prompts'][img_num],
-                    config['neg_prompts'][img_num],
+                    config['target_prompt'] + " " + config['add_prompts'][img_num],
+                    config['target_neg_prompt'] + " " + config['neg_prompts'][img_num],
                     config, oneactor_extra_config)
                 image = image.images[0]
-                image.save(out_root+f'/OneActor_'+config['file_names'][img_num]+'_step_'+str(steps)+'_'+uuid+'.jpg')
+                image.save(f"{out_root}/inference/{config['file_names'][img_num]}_step_{str(steps)}.jpg")
 
 if __name__ == '__main__':
     main()
