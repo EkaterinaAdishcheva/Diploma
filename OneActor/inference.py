@@ -46,6 +46,8 @@ def main():
         ENV_CONFIGS = json.load(f)
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_path', type=str, default='./config/gen_tune_inference.yaml')
+    parser.add_argument('--target_id', type=str, required=True)
+    parser.add_argument('--model_id', type=str, required=True)
     args = parser.parse_args()
     # load config
     with open(args.config_path, "r") as f:
@@ -57,42 +59,34 @@ def main():
     for _, tgt_dirs, _ in os.walk(target_dir):
         break
         
-    if len(tgt_dirs) == 0:
+    target_id = args.target_id
+    model_id = args.model_id
+
+    print(f"target_id = {target_id}")
+
+
+    if target_id not in tgt_dirs:
         print("Base image is not generated")
         return
 
-    if config['target_uuid'] == 'no':
-        target_uuid = tgt_dirs[0][4:]
-    else:
-        if 'exp_' + config['target_uuid'] not in tgt_dirs:
-            print("No target images") 
-            return
-        target_uuid = config['target_uuid']
+    target_dir += f"/{target_id}"
 
-    print(f"target_uuid = {target_uuid}")
-    target_dir += f"/exp_{target_uuid}"
-
-    del tgt_dirs
+    print(f"model_id = {model_id}")
+    
     for _, tgt_dirs, _ in os.walk(target_dir):
         break
-    if not tgt_dirs:
+    
+    if model_id not in tgt_dirs:
         print("Train is not performed")
         return
 
-    if config['model_uuid'] == 'no':
-        model_uuid = tgt_dirs[0][7:]
-    else:
-        if 'output_' + config['model_uuid'] not in tgt_dirs:
-            print("No trained model") 
-            return
-        model_uuid = config['model_uuid']
     
-    out_root = target_dir + f"/output_{model_uuid}" 
+    out_root = target_dir + f"/{model_id}" 
     
     os.makedirs(f"{out_root}/inference", exist_ok=True)
     print(f"Save inference in {out_root}/inference")
 
-    shutil.copyfile(args.config_path, out_root+f'/gen_config_{model_uuid}.yaml')
+    shutil.copyfile(args.config_path, out_root+f'/gen_config_{model_id}.yaml')
 
     # load sd pipeline
     pipeline = DiffusionPipeline.from_pretrained(ENV_CONFIGS['paths']['sdxl_path']).to(config['device'])
@@ -103,7 +97,6 @@ def main():
     h_base = load_pickle(target_dir+'/base/mid_list.pkl')
     h_tar = xt_dic['h_mid']
     
-    use_mask = config['use_mask']
     
     # iterate over image list
     for img_num in range(len(config['add_prompts'])):

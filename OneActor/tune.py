@@ -63,11 +63,8 @@ else:
 
 
 import numpy as np
-import logging
 
 logger = get_logger(__name__)
-file_handler = logging.FileHandler("accelerate.log")
-logger.addHandler(file_handler)
 
 def import_model_class_from_model_name_or_path(
     pretrained_model_name_or_path: str, revision: str = None, subfolder: str = "text_encoder"
@@ -218,8 +215,6 @@ class OneActorDataset(Dataset):
         self.base_paths = [
             os.path.join(self.base_root, file_path) for file_path in os.listdir(self.base_root) \
                 if os.path.splitext(file_path)[1] == '.jpg']
-        if self.use_mask:
-            self.mask_base_paths = [f[:-4] + "_mask.png" for f in self.base_paths]
 
         self.num_images = len(self.image_paths)
         self.num_base = len(self.base_paths)
@@ -259,8 +254,6 @@ class OneActorDataset(Dataset):
         example = {}
 
         img_paths = []
-        if self.use_mask:
-            msk_paths = []
         h_mid_list = []
         # target samples
         
@@ -273,27 +266,19 @@ class OneActorDataset(Dataset):
             target_img_path = random.choice(self.image_paths)
             
         img_paths.append(target_img_path)
-        if self.use_mask:
-            msk_paths.append(mask_target_img_path)
+
         h_mid_list.append(self.h_mid[-1])
         # base samples
         for i in range(self.neg_num):
             ind = random.randint(0, len(self.base_paths)-1)
             img_paths.append(self.base_paths[ind])
-            if self.use_mask:
-                msk_paths.append(self.mask_base_paths[ind])
             h_mid_list.append(self.base_mid[ind])
         h_mid_list.append(random.choice(h_mid_list))
         
         img_tensors = []
-        if self.use_mask:
-            mask_tensor = []
         text_list = []
-
-        if self.use_mask == False:
-            msk_paths = [None] * len(img_paths)
             
-        for img_path, mask_path in zip(img_paths, msk_paths):
+        for img_path in img_paths:
 
             image = Image.open(img_path)
 
@@ -311,33 +296,36 @@ class OneActorDataset(Dataset):
 
             img_tensors.append(torch.from_numpy(image).permute(2, 0, 1))
 
-            if self.use_mask:
-                mask = Image.open(mask_path)
-                if not mask.mode == "RGB":
-                    mask = mask.convert("RGB")
-                mask = np.array(mask).astype(np.uint8)
-                if flip_ind:
-                    mask = mask[:,::-1]
-                # default to score-sde preprocessing
-    
-                mask = Image.fromarray(mask)
-                mask = mask.resize((self.latent_size, self.latent_size), resample=self.interpolation)
-                mask = np.array(mask).astype(np.uint8)
-                mask = (mask / np.max(mask) ).astype(np.float32)
-                mask = np.concatenate((mask, mask[:,:,:1]), axis=2) # make 4 channels
-     
-                mask_tensor.append(torch.from_numpy(mask).permute(2, 0, 1))
-
             text = random.choice(self.templates).format(self.base_condition)
             text_list.append(text)
-        img_tensors.append(img_tensors[0])
+
         if self.use_mask:
-            mask_tensor.append(mask_tensor[0])
+            mask_tensors = []
+            mask = Image.open(mask_target_img_path)
+            if not mask.mode == "RGB":
+                mask = mask.convert("RGB")
+                mask = np.array(mask).astype(np.uint8)
+            if flip_ind:
+                mask = mask[:,::-1]
+            # default to score-sde preprocessing
+    
+            mask = Image.fromarray(mask)
+            mask = mask.resize((self.latent_size, self.latent_size), resample=self.interpolation)
+            mask = np.array(mask).astype(np.uint8)
+            mask = (mask / np.max(mask) ).astype(np.float32)
+            mask = np.concatenate((mask, mask[:,:,:1]), axis=2) # make 4 channels
+     
+            mask_tensors.append(torch.from_numpy(mask).permute(2, 0, 1))
+            for i in range(len(img_tensors) - len(mask_tensors)):
+                mask_tensors.append(torch.ones(size=mask.shape).permute(2, 0, 1))
+            mask_tensors.append(mask_tensors[0])
+
+        img_tensors.append(img_tensors[0])
         text_list.append(text_list[0])
 
         example["pixel_values"] = torch.stack(img_tensors)
         if self.use_mask:
-            example["mask_pixel_values"] = torch.stack(mask_tensor)
+            example["mask_pixel_values"] = torch.stack(mask_tensors)
         example['text'] = text_list
         example['base'] = self.base_condition
         example['h_mid'] = torch.stack(h_mid_list)
@@ -353,7 +341,15 @@ def main():
     # get user configs
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_path', type=str, default='./config/gen_tune_inference.yaml')
+    parser.add_argument('--use_mask', type=bool, default=False)
+    parser.add_argument('--use_zone', type=bool, default=False)
+    parser.add_argument('--mask_power', type=float, default=1)
+    parser.add_argument('--mask_alpha', type=float, default=0.5)
+    parser.add_argument('--zone_alpha', type=float, default=0.5)
+    parser.add_argument('--target_id', type=str, required=True)
+
     args = parser.parse_args()
+
     with open(args.config_path, "r") as f:
         config = yaml.safe_load(f)
     device = config['device']
@@ -362,21 +358,19 @@ def main():
     target_dir = config['experiments_dir']+'/'+config['target_dir']
     for _, tgt_dirs, _ in os.walk(target_dir):
         break
-    if not tgt_dirs:
+    
+    target_id = args.target_id
+
+    print(f"target_id = {target_id}")
+
+
+    if target_id not in tgt_dirs:
         print("Base image is not generated")
         return
-    if config['target_uuid'] == 'no':
-        target_uuid = tgt_dirs[0][4:]
-    else:
-        if 'exp_' + config['target_uuid'] not in tgt_dirs:
-            print("No target images") 
-            return
-        target_uuid = config['target_uuid']
 
-    print(f"target_uuid = {target_uuid}")
+    target_dir += f"/{target_id}"
 
-    target_dir += f"/exp_{target_uuid}"
-
+    
     accelerator_project_config = ProjectConfiguration(project_dir=target_dir, logging_dir='logs')
     accelerator = Accelerator(
         gradient_accumulation_steps=1,
@@ -401,15 +395,11 @@ def main():
     # If passed along, set the training seed now.
     if config['t_seed'] is not None:
         set_seed(config['t_seed'])
-        
-    use_mask = config['use_mask']
-    use_zone = config['use_zone']
-    mask_alpha = config['mask_alpha']
-    zone_alpha = config['zone_alpha']
-    mask_power = config['mask_power']
+
+    use_mask, use_zone, mask_power, mask_alpha, zone_alpha = args.use_mask, args.use_zone, args.mask_power, args.mask_alpha ,args.zone_alpha  
     if use_mask and use_zone:
-        use_mask = False
-        
+        use_zone = False
+    
     # Handle the repository creation
     now = datetime.now()
 
@@ -574,7 +564,23 @@ def main():
     logger.info(f"  Gradient Accumulation steps = {1}")
     logger.info(f"  Total optimization steps = {max_train_steps}")
     logger.info(f"  Dataset = {target_dir}, output_{train_uuid}")
-    logger.info(f"  Train parameters: (mask, mask_power, mask_alpha) = ({use_mask}, {config['mask_power'], mask_alpha}), (zone, zone_alpha) = ({use_zone}, {zone_alpha})")
+    logger.info(f"  Train parameters: (mask, mask_power, mask_alpha) = ({use_mask}, {mask_power}, {mask_alpha}), (zone, zone_alpha) = ({use_zone}, {zone_alpha})")
+
+    with open(f"{output_dir}/log_train.log", 'w') as log_file:
+        print(f"num_examples: {len(train_dataset)}", file=log_file)
+        print(f"num_epochs: {config['epochs']}", file=log_file)
+        print(f"batch_size: {config['batch_size']}", file=log_file)
+        print(f"total_batch_size: {total_batch_size}", file=log_file)
+        print(f"max_train_steps: {max_train_steps}", file=log_file)
+        print(f"target_dir: '{target_dir}'", file=log_file)
+        print(f"train_uuid: '{train_uuid}'", file=log_file)
+        print(f"use_mask: {use_mask}", file=log_file)
+        print(f"mask_power: {mask_power}", file=log_file)
+        print(f"mask_alpha: {mask_alpha}", file=log_file)
+        print(f"use_zone: {use_zone}", file=log_file)
+        print(f"zone_alpha: {zone_alpha}", file=log_file)
+
+    
     global_step = 0
     first_epoch = 0
     # Potentially load in the weights and states from a previous save
@@ -612,11 +618,14 @@ def main():
     if use_zone:
         zone = make_zone(128)
         zone = (1-zone_alpha) * torch.ones(size=zone.shape) + zone_alpha * zone
-        zone[1:-1] = torch.ones(size=zone.shape) # do not apply mask to base 
+        zone[1:-1] = torch.ones(size=zone[1:-1].shape) # do not apply mask to base 
         zone = torch.tensor(zone, device=device).float()
 
     best_loss = 1000.0
-    alphas_cumprod = torch.pow(noise_scheduler.alphas_cumprod, mask_power).to(device=accelerator.device)
+    
+    if use_mask:  
+        alphas_cumprod = torch.pow(noise_scheduler.alphas_cumprod, mask_power).to(device=accelerator.device)
+        
     for epoch in range(first_epoch, config['epochs']):
         projector.train()
         train_loss = 0.0

@@ -68,13 +68,13 @@ if __name__ == '__main__':
     os.makedirs(experiments_dir, exist_ok=True)
     
     now = datetime.now()
-    target_uuid = now.strftime("%y%m%d%H%M") # uuid.uuid4()
-    target_uuid= str(train_uuid)
+    target_id = now.strftime("%y%m%d%H%M") # uuid.uuid4()
+    target_id= str(target_id)
     
-    experiments_dir += "/" + f'exp_{target_uuid}'
+    experiments_dir += "/" + f'exp_{target_id}'
     os.makedirs(experiments_dir, exist_ok=True)
     # copy the config
-    shutil.copyfile(opt.config_path, experiments_dir+f'/config_{target_uuid}.yaml')
+    shutil.copyfile(opt.config_path, experiments_dir+f'/config_{target_id}.yaml')
     # use original pipeline to prepare data
     image, xt_list_, prompt_embeds, mid_ = pipeline(prompt, neg_prompt=config['target_neg_prompt'], 
                                                     num_inference_steps=steps, guidance_scale=guidance_scale, generator=generator,

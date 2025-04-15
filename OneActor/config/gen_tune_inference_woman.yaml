@@ -1,0 +1,62 @@
+# GENERAL SETTING
+experiments_dir: 'experiments'
+
+target_uuid: 'b4787115'
+model_uuid: '2504141503'
+
+model_type: 'XL'
+size: 1024
+device: 'cuda'
+
+target_prompt: 'A young woman with long wavy hair wairing sundress, photo realistic' # CHANGE HERE, MAKE SURE IT CONTAINS THE BASE WORD
+target_dir: 'young_woman_with_long_wavy_hair'
+add_target_prompt: 'contrast solid background'
+target_neg_prompt: ''
+base: 'woman' # CHANGE HERE
+add_prompts: ['standing in wildflowers',
+   'walking on sunset beach',
+   'sitting at cafe',
+   'leaning on a fence']
+neg_prompts: ['', '', '', '']
+file_names: ['standing_in_wildflowers',
+   'walking_on_sunset_beach',
+   'sitting_at_cafe',
+   'leaning_on_a_fence']
+
+
+steps: 30
+guidance_scale: 7.5
+g_seed: 3643
+gen_base: 10 # Generate auxiliary images
+
+# TUNE
+concept_type: 'character'  # CHANGE HERE, choose from 'character' 'object' 'style'
+t_seed: 1777
+lr: 0.0001
+neg_num: 3 # Auxiliary images used in a batch
+lambda1: 0.5
+lambda2: 0.2
+batch_size: 1 # Fixed
+epochs: 1
+save_steps: 10
+checkpointing_steps: 500
+resume_from_checkpoint: None  # True or None
+xt_to_use: -1
+
+# env config
+use_xformers: True
+allow_tf32: True
+
+
+# INFERENCE
+
+seed: 2018
+inference_steps: 30
+select_steps: [1,20]  # appplying cluster guidance to these steps
+only_step: [20, 40, 80, 100]  # type in a specific step (Recommended) or set to 'best'
+
+v: 0.8 # semantic interpolation scales
+eta_1: 7.5  # target attraction scale
+eta_2: 0  # auxiliary exclusion scale (set to 0 will avoid increasing inference time)
+
+xt_position: -1
