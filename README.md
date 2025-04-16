@@ -18,9 +18,9 @@ This is the official code of OneActor, which allows users to generate **consiste
 
 ## 🌈 Gallery
 <div align="center">
-    <img src="assets/gallery1.jpg", width="600">
+    <img src="OneACtor/assets/gallery1.jpg", width="600">
     <br><br><br>
-    <img src="assets/gallery2.jpg", width="600">
+    <img src="OneACtor/assets/gallery2.jpg", width="600">
 </div>
 
 ## 🛠️ Usage
