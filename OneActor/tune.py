@@ -66,6 +66,8 @@ import numpy as np
 
 logger = get_logger(__name__)
 
+import torch.nn.functional as F
+
 def import_model_class_from_model_name_or_path(
     pretrained_model_name_or_path: str, revision: str = None, subfolder: str = "text_encoder"
 ):
@@ -374,7 +376,7 @@ def main():
     accelerator_project_config = ProjectConfiguration(project_dir=target_dir, logging_dir='logs')
     accelerator = Accelerator(
         gradient_accumulation_steps=1,
-        mixed_precision="no",
+        mixed_precision="fp16",
         log_with="tensorboard",
         project_config=accelerator_project_config,
     )
@@ -535,11 +537,12 @@ def main():
         weight_dtype = torch.bfloat16
     # Move vae and unet to device and cast to weight_dtype
 
-    
-    unet.to(accelerator.device, dtype=weight_dtype)
-    vae.to(accelerator.device, dtype=weight_dtype)
-    text_encoder_one.to(accelerator.device, dtype=weight_dtype)
-    text_encoder_two.to(accelerator.device, dtype=weight_dtype)
+    with torch.cuda.amp.autocast(dtype=torch.float16):
+        unet.to(accelerator.device, dtype=weight_dtype)
+        text_encoder_one.to(accelerator.device, dtype=weight_dtype)
+        text_encoder_two.to(accelerator.device, dtype=weight_dtype)
+
+    vae.to(accelerator.device)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader))
@@ -633,7 +636,10 @@ def main():
             with accelerator.accumulate(projector):
                 # import pdb; pdb.set_trace()
                 # Convert images to latent space
-                latents = vae.encode(batch["pixel_values"][0].to(dtype=weight_dtype)).latent_dist.sample().detach()
+   
+                images = batch["pixel_values"][0].to(dtype=torch.float32)
+                latents = vae.encode(batch["pixel_values"][0]).latent_dist.sample().detach()                    
+                latents.to(dtype=torch.float16)
                 latents = latents * vae.config.scaling_factor
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents)
@@ -645,7 +651,6 @@ def main():
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
-    
                 if use_mask:            
                     mask_latents = batch["mask_pixel_values"][0].to(dtype=weight_dtype)
 
@@ -665,7 +670,8 @@ def main():
                     target_size = (1024, 1024)
                     add_time_ids = list(original_size + crops_coords_top_left + target_size)
                     add_time_ids = torch.tensor([add_time_ids])
-                    add_time_ids = add_time_ids.to(accelerator.device, dtype=weight_dtype)
+                    with torch.cuda.amp.autocast(dtype=torch.float16):
+                        add_time_ids = add_time_ids.to(accelerator.device)
                     return add_time_ids # tensor(1, 6)
                 
                 original_size = (1024, 1024)
@@ -714,7 +720,7 @@ def main():
                     else:
                         delta_emb_ = delta_emb[b_s:b_s+1]
                     prompt_embeds[:, base_token_id, :] = prompt_embeds[:, base_token_id, :] + delta_emb_
-    
+
                     prompt_embeds_batch_list.append(prompt_embeds)
                     add_text_embeds_batch_list.append(pooled_prompt_embeds)
                 
@@ -726,6 +732,14 @@ def main():
     
     
                 # Predict the noise residual
+                dtype = unet.dtype
+
+                noisy_latents = noisy_latents.to(dtype)
+                prompt_embeds = prompt_embeds.to(dtype)
+                timesteps = timesteps.to(dtype)
+                unet_added_conditions["text_embeds"] = unet_added_conditions["text_embeds"].to(dtype)
+                unet_added_conditions["time_ids"] = unet_added_conditions["time_ids"].to(dtype)
+
                 model_pred = unet(noisy_latents, timesteps, encoder_hidden_states=prompt_embeds, added_cond_kwargs=unet_added_conditions).sample
     
     

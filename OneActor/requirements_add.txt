@@ -1,2 +1,4 @@
 matplotlib
 torchmetrics
+pandas
+seaborn

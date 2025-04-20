@@ -9,4 +9,5 @@ chmod 400 /root/.ssh/id_rsa
 git config --global user.email "e***a@example.com"
 git config --global user.name "Ekaterina Adishcheva"
 
+export HF_HOME="/workspace/.cache/"
 cat .ssh/id_rsa.pub

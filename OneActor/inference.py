@@ -16,6 +16,8 @@ def load_pickle(path):
 def find_token_ids(tokenizer, prompt, words):
     tokens = tokenizer.encode(prompt)
     ids = []
+    if isinstance(words, str):
+                  words = [words]
     for word in words:
         for i, token in enumerate(tokens):
             if tokenizer.decode(token) == word:
@@ -100,12 +102,12 @@ def main():
     
     # iterate over image list
     for img_num in range(len(config['add_prompts'])):
-        _str = config['target_prompt'] + " " + config['add_prompts'][img_num]
+        _str = config['target_prompt'] + " " + config['add_target_prompt'][img_num] + " " + config['add_prompts'][img_num]
         print(f"Generating prompt {_str}...")
         # original output by SDXL
         generator = torch.manual_seed(config['seed'])
         image = pipeline(
-            config['target_prompt'] + " " + config['add_prompts'][img_num],
+            config['target_prompt'] + " " + config['add_target_prompt'][img_num] + " " + config['add_prompts'][img_num],
             negative_prompt=config['target_neg_prompt'] + " " + config['neg_prompts'][img_num],
             num_inference_steps=config['inference_steps'],
             guidance_scale=config['eta_1'],
@@ -126,6 +128,7 @@ def main():
             select_list = None
 
         # locate the base token id
+        print(config['target_prompt'] + " " + config['add_target_prompt'] + " " + config['add_prompts'][img_num])
         token_id = find_token_ids(pipeline.tokenizer, config['target_prompt'] + " " + config['add_prompts'][img_num], config['base'])
         generator = torch.manual_seed(config['seed'])
         config['generator'] = generator
@@ -151,7 +154,7 @@ def main():
 
                 image = pipeline_inference(
                     pipeline, 
-                    config['target_prompt'] + " " + config['add_prompts'][img_num],
+                    config['target_prompt'] + " " + config['add_target_prompt'] + " " + config['add_prompts'][img_num],
                     config['target_neg_prompt'] + " " + config['neg_prompts'][img_num],
                     config, oneactor_extra_config)
                 image = image.images[0]
@@ -173,7 +176,7 @@ def main():
             }
             image = pipeline_inference(
                 pipeline,
-                config['target_prompt'] + " " + config['add_prompts'][img_num],
+                config['target_prompt'] + " " + config['add_target_prompt'] + " " + config['add_prompts'][img_num],
                 config['target_neg_prompt'] + " " + config['neg_prompts'][img_num],
                 config, oneactor_extra_config)
             image = image.images[0]
@@ -198,7 +201,7 @@ def main():
                 }
                 image = pipeline_inference(
                     pipeline, 
-                    config['target_prompt'] + " " + config['add_prompts'][img_num],
+                    config['target_prompt'] + " " + config['add_target_prompt'][img_num] + " " + config['add_prompts'][img_num],
                     config['target_neg_prompt'] + " " + config['neg_prompts'][img_num],
                     config, oneactor_extra_config)
                 image = image.images[0]

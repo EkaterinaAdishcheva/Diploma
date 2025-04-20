@@ -8,6 +8,8 @@ chmod 400 /root/.ssh/id_rsa
 git config --global user.email "e***a@example.com"
 git config --global user.name "Ekaterina Adishcheva"
 
+export HF_HOME="/workspace/.cache/"
+
 . ds/bin/activate
 python -m ipykernel install --user --name=ds --display-name "Python (ds)"
 deactivate ds
@@ -18,4 +20,6 @@ deactivate sam2_venv
 
 . oa_venv/bin/activate
 python -m ipykernel install --user --name=oa_venv --display-name "Python (oa_venv)"
+
 cd OneActor
+
