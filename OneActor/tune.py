@@ -188,6 +188,7 @@ def make_zone(size):
     return zone
     
 # input: latent_sequence(con&uncon), prompt_embed, prompt, base_prompt
+# input: latent_sequence(con&uncon), prompt_embed, prompt, base_prompt
 class OneActorDataset(Dataset):
     def __init__(
         self,
@@ -279,6 +280,7 @@ class OneActorDataset(Dataset):
         
         img_tensors = []
         text_list = []
+        flip_ind = []
             
         for img_path in img_paths:
 
@@ -291,7 +293,9 @@ class OneActorDataset(Dataset):
             image = Image.fromarray(image)
             image = image.resize((self.size, self.size), resample=self.interpolation)
             image_f = self.flip_transform(image)
-            flip_ind = image_f != image
+            _flip_ind = image_f != image
+            flip_ind.append(_flip_ind)
+
             image = image_f
             image = np.array(image).astype(np.uint8)
             image = (image / 127.5 - 1.0).astype(np.float32)
@@ -307,7 +311,7 @@ class OneActorDataset(Dataset):
             if not mask.mode == "RGB":
                 mask = mask.convert("RGB")
                 mask = np.array(mask).astype(np.uint8)
-            if flip_ind:
+            if flip_ind[0]:
                 mask = mask[:,::-1]
             # default to score-sde preprocessing
     
@@ -332,8 +336,7 @@ class OneActorDataset(Dataset):
         example['base'] = self.base_condition
         example['h_mid'] = torch.stack(h_mid_list)
     
-        return example
-    
+        return example    
     
 def main():
     
