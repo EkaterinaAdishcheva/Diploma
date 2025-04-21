@@ -6,6 +6,6 @@ python -m venv oa_venv
 python -m pip install --upgrade pip
 pip install ipykernel
 python -m ipykernel install --user --name=oa_venv --display-name "Python (oa_venv)"
-pip install -r OneActor/OneActor/requirements.txt
-pip install -r OneActor/OneActor/requirements_add.txt
+pip install -r Diploma/OneActor/requirements.txt
+pip install -r Diploma/OneActor/requirements_add.txt
 deactivate oa_venv

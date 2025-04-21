@@ -20,6 +20,3 @@ deactivate sam2_venv
 
 . oa_venv/bin/activate
 python -m ipykernel install --user --name=oa_venv --display-name "Python (oa_venv)"
-
-cd OneActor
-

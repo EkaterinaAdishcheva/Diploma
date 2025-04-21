@@ -540,12 +540,13 @@ def main():
         weight_dtype = torch.bfloat16
     # Move vae and unet to device and cast to weight_dtype
 
-    with torch.cuda.amp.autocast(dtype=torch.float16):
+    with torch.cuda.amp.autocast(dtype=weight_dtype):
         unet.to(accelerator.device, dtype=weight_dtype)
         text_encoder_one.to(accelerator.device, dtype=weight_dtype)
         text_encoder_two.to(accelerator.device, dtype=weight_dtype)
 
-    vae.to(accelerator.device)
+    with torch.cuda.amp.autocast(dtype=torch.float32):
+        vae.to(accelerator.device)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader))
@@ -642,7 +643,7 @@ def main():
    
                 images = batch["pixel_values"][0].to(dtype=torch.float32)
                 latents = vae.encode(batch["pixel_values"][0]).latent_dist.sample().detach()                    
-                latents.to(dtype=torch.float16)
+                latents.to(dtype=weight_dtype)
                 latents = latents * vae.config.scaling_factor
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents)
@@ -673,7 +674,7 @@ def main():
                     target_size = (1024, 1024)
                     add_time_ids = list(original_size + crops_coords_top_left + target_size)
                     add_time_ids = torch.tensor([add_time_ids])
-                    with torch.cuda.amp.autocast(dtype=torch.float16):
+                    with torch.cuda.amp.autocast(dtype=weight_dtype):
                         add_time_ids = add_time_ids.to(accelerator.device)
                     return add_time_ids # tensor(1, 6)
                 

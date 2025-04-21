@@ -16,4 +16,4 @@ pip install opencv-python
 
 deactivate sam2_venv
 
-cp OneActor/sam2/automatic_mask_generator_example.ipynb sam2 
+cp Diploma/sam2/automatic_mask_generator_example.ipynb sam2 
