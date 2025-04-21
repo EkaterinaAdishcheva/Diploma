@@ -1,5 +1,6 @@
 #One Actor
 cd /workspace/
+git clone git@github.com:EkaterinaAdishcheva/Diploma.git
 python -m venv oa_venv
 . oa_venv/bin/activate
 python -m pip install --upgrade pip
