@@ -55,6 +55,8 @@ def main():
     with open(args.config_path, "r") as f:
         config = yaml.safe_load(f)
 
+    config['neg_prompts'] = [''] * len(config['add_prompts'])
+    config['file_names'] = ["_".join(prompt.split(" ")) for prompt in config['add_prompts']]
     # make dir and initialize
     tgt_dirs = []
     target_dir = config['experiments_dir']+'/'+config['target_dir']
@@ -102,18 +104,10 @@ def main():
     
     # iterate over image list
     for img_num in range(len(config['add_prompts'])):
-        _str = config['target_prompt'] + " " + config['add_target_prompt'][img_num] + " " + config['add_prompts'][img_num]
+        _str = config['target_prompt'] + " " + config['add_target_prompt'] + " " + config['add_prompts'][img_num]
         print(f"Generating prompt {_str}...")
         # original output by SDXL
         generator = torch.manual_seed(config['seed'])
-        image = pipeline(
-            config['target_prompt'] + " " + config['add_target_prompt'][img_num] + " " + config['add_prompts'][img_num],
-            negative_prompt=config['target_neg_prompt'] + " " + config['neg_prompts'][img_num],
-            num_inference_steps=config['inference_steps'],
-            guidance_scale=config['eta_1'],
-            generator=generator)
-        image = image.images[0]
-        image.save(f"{out_root}/inference/{config['file_names'][img_num]}_sdxl.jpg")
 
         # perform step-wise guidance
         select_steps = config['select_steps']
@@ -128,7 +122,6 @@ def main():
             select_list = None
 
         # locate the base token id
-        print(config['target_prompt'] + " " + config['add_target_prompt'] + " " + config['add_prompts'][img_num])
         token_id = find_token_ids(pipeline.tokenizer, config['target_prompt'] + " " + config['add_prompts'][img_num], config['base'])
         generator = torch.manual_seed(config['seed'])
         config['generator'] = generator
@@ -201,7 +194,7 @@ def main():
                 }
                 image = pipeline_inference(
                     pipeline, 
-                    config['target_prompt'] + " " + config['add_target_prompt'][img_num] + " " + config['add_prompts'][img_num],
+                    config['target_prompt'] + " " + config['add_target_prompt'] + " " + config['add_prompts'][img_num],
                     config['target_neg_prompt'] + " " + config['neg_prompts'][img_num],
                     config, oneactor_extra_config)
                 image = image.images[0]

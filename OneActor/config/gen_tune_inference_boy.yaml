@@ -12,20 +12,25 @@ device: 'cuda'
 
 target_prompt: 'A handsome teenager wearing shorts and canvas shoes, digital painting'
 target_dir: 'teenager_wearing_shorts_and_canvas_shoes'
-add_target_prompt: 'contrast solid background'
+add_target_prompt: '' #'contrast solid background'
 target_neg_prompt: ''
 base: 'teenager'
 add_prompts: ['a city as background',
    'the Effel Tower as a background',
    'the Statue of liberty as a background',
    'eating a burger',
-   'wearing sunglasses']
-neg_prompts: ['', '', '', '', '']
-file_names: ['a_city_as_background',
-   'the_effel_tower_as_a_background',
-   'the_statue_of_liberty_as_a_background',
-   'eating_a_burger',
-   'wearing_sunglasses']
+   'wearing sunglasses',
+   'standing in the mall',
+   'sitting on a park bench',
+   'next to a bike',
+   'walking on the beach',
+   'with a sunset behind him',
+   'holding a skateboard',
+   'at a music festival',
+   'under neon lights',
+   'in front of a graffiti wall',
+   'waiting at a bus stop'
+   ]
 
 steps: 30
 guidance_scale: 7.5
@@ -56,7 +61,7 @@ allow_tf32: True
 seed: 1234
 inference_steps: 30
 select_steps: [1,20]  # appplying cluster guidance to these steps
-only_step: [20, 40, 80, 100]  # type in a specific step (Recommended) or set to 'best'
+only_step: [50, 100]  # type in a specific step (Recommended) or set to 'best'
 
 v: 0.8 # semantic interpolation scales
 eta_1: 7.5  # target attraction scale
