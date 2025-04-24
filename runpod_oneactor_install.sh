@@ -8,4 +8,5 @@ pip install ipykernel
 python -m ipykernel install --user --name=oa_venv --display-name "Python (oa_venv)"
 pip install -r Diploma/OneActor/requirements.txt
 pip install -r Diploma/OneActor/requirements_add.txt
+export HF_HOME="/workspace/.cache/"
 deactivate oa_venv

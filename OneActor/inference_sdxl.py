@@ -49,7 +49,6 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_path', type=str, default='./config/gen_tune_inference.yaml')
     parser.add_argument('--target_id', type=str, required=True)
-    parser.add_argument('--model_id', type=str, required=True)
     args = parser.parse_args()
     # load config
     with open(args.config_path, "r") as f:
@@ -64,7 +63,6 @@ def main():
         break
         
     target_id = args.target_id
-    model_id = args.model_id
 
     print(f"target_id = {target_id}")
 
@@ -79,8 +77,6 @@ def main():
     
     os.makedirs(f"{out_root}/inference_sdxl", exist_ok=True)
     print(f"Save inference in {out_root}/inference_sdxl")
-
-    shutil.copyfile(args.config_path, out_root+f'/gen_config_{model_id}.yaml')
 
     # load sd pipeline
     pipeline = DiffusionPipeline.from_pretrained(ENV_CONFIGS['paths']['sdxl_path']).to(config['device'])

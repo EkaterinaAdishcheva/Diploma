@@ -8,6 +8,7 @@ chmod 400 /root/.ssh/id_rsa
 git config --global user.email "e***a@example.com"
 git config --global user.name "Ekaterina Adishcheva"
 
+mkdir workspace/.cache/
 export HF_HOME="/workspace/.cache/"
 
 . ds/bin/activate

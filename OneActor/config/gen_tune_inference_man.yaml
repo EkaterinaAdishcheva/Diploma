@@ -20,7 +20,7 @@ add_prompts: ['a city as background',
    'eating a burger',
    'wearing sunglasses',
    'standing on a mountain peak',
-   'exploring an ancient temple'
+   'exploring an ancient temple',
    'riding a motorcycle',
    'in a jungle with wild animals',
    'escaping from an explosion',
@@ -32,7 +32,7 @@ add_prompts: ['a city as background',
 
 steps: 30
 guidance_scale: 7.5
-g_seed: 4643
+g_seed: 2100
 gen_base: 10 # Generate auxiliary images
 
 # TUNE

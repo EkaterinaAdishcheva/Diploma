@@ -658,15 +658,19 @@ def main():
                 if use_mask:            
                     mask_latents = batch["mask_pixel_values"][0].to(dtype=weight_dtype)
 
-                    noisy_mask_latents = alphas_cumprod[timesteps].view(5,-1) \
-                            * mask_latents.view(5,-1) \
-                        + (1 - alphas_cumprod[timesteps].view(5,-1)) \
-                           * torch.ones(size=mask_latents.size()).to(latents.device).view(5, -1)
+                    # noisy_mask_latents = alphas_cumprod[timesteps].view(5,-1) \
+                    #         * mask_latents.view(5,-1) \
+                    #     + (1 - alphas_cumprod[timesteps].view(5,-1)) \
+                    #        * torch.ones(size=mask_latents.size()).to(latents.device).view(5, -1)
 
-                    noisy_mask_latents = (1 - mask_alpha) * torch.ones(size=mask_latents.size()).to(latents.device).view(5, -1) \
-                        + mask_alpha * noisy_mask_latents
-                    noisy_mask_latents = noisy_mask_latents.reshape(5, 4, 128, 128)
-                    noisy_mask_latents[1:-1] = torch.ones(size=noisy_mask_latents[1:-1].size()).to(latents.device) # do not apply mask to base  
+                    # noisy_mask_latents = (1 - mask_alpha) * torch.ones(size=mask_latents.size()).to(latents.device).view(5, -1) \
+                    #     + mask_alpha * noisy_mask_latents
+                    # noisy_mask_latents = noisy_mask_latents.reshape(5, 4, 128, 128)
+                    # noisy_mask_latents[1:-1] = torch.ones(size=noisy_mask_latents[1:-1].size()).to(latents.device) # do not apply mask to base  
+
+                    noisy_mask_latents = ((1 - noise_scheduler.alphas_cumprod[timesteps.cpu()])**0.5).view(5, 1, 1, 1).to(device)
+                    noisy_mask_latents = noisy_mask_latents.to(device)
+                    noisy_mask_latents = noisy_mask_latents + ((noise_scheduler.alphas_cumprod[timesteps.cpu()]) ** 0.5).view(5, 1, 1, 1).to(device) * mask_latents
     
                 # time ids
                 def compute_time_ids(original_size, crops_coords_top_left):
