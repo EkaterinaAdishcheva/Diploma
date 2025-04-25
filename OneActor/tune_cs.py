@@ -176,16 +176,6 @@ imagenet_style_templates_small = [
     "a large painting in the style of {}",
 ]
 
-
-def make_zone(size):
-    zone = np.zeros(shape=(5, 4, size,size))
-    for i1 in range(5):
-        for i2 in range(4):
-            for i in range(size):
-                for j in range(size):
-                    zone[i1, i2, i,j] \
-                    = 1/(1 + np.e**(-((j-size/2)/(size/4))**2 - ((i-size/3)/(size/4))**2)) * (1 - 1/(1 + np.e**(-((j-size/2)/(size/4))**2 -((i-size/3)/(size/4))**2))) * 4
-    return zone
     
 # input: latent_sequence(con&uncon), prompt_embed, prompt, base_prompt
 # input: latent_sequence(con&uncon), prompt_embed, prompt, base_prompt
@@ -200,31 +190,27 @@ class OneActorDataset(Dataset):
         flip_p=0.5,
         set="train",
     ):
-        self.target_root = target_dir
+        self.target_root = "./experiments/consistory_adventurer/exp_2504242126"
         self.learnable_property = config['concept_type']
         self.size = config['size']
         self.latent_size = 128
         self.base_condition = config['base']
         self.flip_p = flip_p
         self.neg_num = config['neg_num']
-        self.use_mask = use_mask
         
         self.image_paths = [
-            os.path.join(self.target_root, file_path) for file_path in os.listdir(self.target_root) \
+            os.path.join(f"{self.target_root}/images", file_path) for file_path in os.listdir(f"{self.target_root}/images") \
                 if os.path.splitext(file_path)[1] == '.jpg']
-        if self.use_mask:
-            self.mask_image_paths = [f[:-4] + "_mask.png" for f in self.image_paths]
-        self.base_root = self.target_root + '/base'
         self.base_paths = [
-            os.path.join(self.base_root, file_path) for file_path in os.listdir(self.base_root) \
+            os.path.join(f"{self.target_root}/base", file_path) for file_path in os.listdir(f"{self.target_root}/base") \
                 if os.path.splitext(file_path)[1] == '.jpg']
 
         self.num_images = len(self.image_paths)
         self.num_base = len(self.base_paths)
-        self._length = self.num_images * 2
+        print("🐪", self.num_images, self.num_base)
+        self._length = 2
 
         if set == "train":
-            self._length = self.num_images * repeats * 2
             self._length = 200
 
         self.interpolation = {
@@ -241,15 +227,18 @@ class OneActorDataset(Dataset):
             self.templates = imagenet_style_templates_small
         self.flip_transform = transforms.RandomHorizontalFlip(p=self.flip_p)    # randomly flip images
 
-        with open(self.target_root+f'/xt_list.pkl', 'rb') as f:
-            xt_dic = pickle.load(f)
+        with open(self.target_root+f'/data_list.pkl', 'rb') as f:
+            data_dic = pickle.load(f)
 
-        self.h_mid = xt_dic['h_mid']
-        self.prompt_embed = xt_dic['prompt_embed']
+        self.h_mid = [d['h_mid'] for d in data_dic]
+        self.prompt_embed = [d['prompt_embed'] for d in data_dic]
 
-        with open(self.base_root+f'/mid_list.pkl', 'rb') as f:
+        with open(self.target_root+f'/base/mid_list.pkl', 'rb') as f:
             self.base_mid = pickle.load(f)
 
+        self.h_mid = torch.stack([t[-1] for t in self.h_mid])
+        self.h_mid = torch.mean(self.h_mid, dim=0)
+        print(self.h_mid.size())
 
     def __len__(self):
         return self._length
@@ -260,18 +249,13 @@ class OneActorDataset(Dataset):
         img_paths = []
         h_mid_list = []
         # target samples
-        
-        if self.use_mask:
-            mask_tensor = []
-            target_img_path, mask_target_img_path = random.choice(list(
-                zip(self.image_paths, self.mask_image_paths))
-            )
-        else:
-            target_img_path = random.choice(self.image_paths)
+
+        ind = random.randint(0, self.num_images-1)
+        target_img_path = self.image_paths[ind]
             
         img_paths.append(target_img_path)
 
-        h_mid_list.append(self.h_mid[-1])
+        h_mid_list.append(self.h_mid)
         # base samples
         for i in range(self.neg_num):
             ind = random.randint(0, len(self.base_paths)-1)
@@ -306,39 +290,20 @@ class OneActorDataset(Dataset):
             text = random.choice(self.templates).format(self.base_condition)
             text_list.append(text)
 
-        if self.use_mask:
-            mask_tensors = []
-            mask = Image.open(mask_target_img_path)
-            if not mask.mode == "RGB":
-                mask = mask.convert("RGB")
-                mask = np.array(mask).astype(np.uint8)
-            if flip_ind[0]:
-                mask = mask[:,::-1]
-            # default to score-sde preprocessing
-    
-            mask = Image.fromarray(mask)
-            mask = mask.resize((self.latent_size, self.latent_size), resample=self.interpolation)
-            mask = np.array(mask).astype(np.uint8)
-            mask = (mask / np.max(mask) ).astype(np.float32)
-            mask = np.concatenate((mask, mask[:,:,:1]), axis=2) # make 4 channels
-     
-            mask_tensors.append(torch.from_numpy(mask).permute(2, 0, 1))
-            for i in range(len(img_tensors) - len(mask_tensors)):
-                mask_tensors.append(torch.ones(size=mask.shape).permute(2, 0, 1))
-            mask_tensors.append(mask_tensors[0])
-
         img_tensors.append(img_tensors[0])
         text_list.append(text_list[0])
 
+        device = self.h_mid.device  # ou torch.device("cuda") si tu veux forcer
+
+        h_mid_list = [h.to(device) for h in h_mid_list]
+
         example["pixel_values"] = torch.stack(img_tensors)
-        if self.use_mask:
-            example["mask_pixel_values"] = torch.stack(mask_tensors)
         example['text'] = text_list
         example['base'] = self.base_condition
         example['h_mid'] = torch.stack(h_mid_list)
     
-        return example    
-    
+        return example   
+        
 def main():
     
     # get environment configs
@@ -347,12 +312,6 @@ def main():
     # get user configs
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_path', type=str, default='./config/gen_tune_inference.yaml')
-    parser.add_argument('--use_mask', type=bool, default=False)
-    parser.add_argument('--use_zone', type=bool, default=False)
-    parser.add_argument('--mask_power', type=float, default=1)
-    parser.add_argument('--mask_alpha', type=float, default=0.5)
-    parser.add_argument('--zone_alpha', type=float, default=0.5)
-    parser.add_argument('--target_id', type=str, required=True)
 
     args = parser.parse_args()
 
@@ -364,19 +323,7 @@ def main():
     target_dir = config['experiments_dir']+'/'+config['target_dir']
     for _, tgt_dirs, _ in os.walk(target_dir):
         break
-    
-    target_id = args.target_id
-
-    print(f"target_id = {target_id}")
-
-
-    if target_id not in tgt_dirs:
-        print("Base image is not generated")
-        return
-
-    target_dir += f"/{target_id}"
-
-    
+        
     accelerator_project_config = ProjectConfiguration(project_dir=target_dir, logging_dir='logs')
     accelerator = Accelerator(
         gradient_accumulation_steps=1,
@@ -401,10 +348,6 @@ def main():
     # If passed along, set the training seed now.
     if config['t_seed'] is not None:
         set_seed(config['t_seed'])
-
-    use_mask, use_zone, mask_power, mask_alpha, zone_alpha = args.use_mask, args.use_zone, args.mask_power, args.mask_alpha ,args.zone_alpha  
-    if use_mask and use_zone:
-        use_zone = False
     
     # Handle the repository creation
     now = datetime.now()
@@ -503,7 +446,6 @@ def main():
     train_dataset = OneActorDataset(
         target_dir=target_dir,
         config=config,
-        use_mask=use_mask,
         set='train',
     )
 
@@ -572,7 +514,6 @@ def main():
     logger.info(f"  Gradient Accumulation steps = {1}")
     logger.info(f"  Total optimization steps = {max_train_steps}")
     logger.info(f"  Dataset = {target_dir}, output_{train_uuid}")
-    logger.info(f"  Train parameters: (mask, mask_power, mask_alpha) = ({use_mask}, {mask_power}, {mask_alpha}), (zone, zone_alpha) = ({use_zone}, {zone_alpha})")
 
     with open(f"{output_dir}/log_train.log", 'w') as log_file:
         print(f"num_examples: {len(train_dataset)}", file=log_file)
@@ -582,11 +523,6 @@ def main():
         print(f"max_train_steps: {max_train_steps}", file=log_file)
         print(f"target_dir: '{target_dir}'", file=log_file)
         print(f"train_uuid: '{train_uuid}'", file=log_file)
-        print(f"use_mask: {use_mask}", file=log_file)
-        print(f"mask_power: {mask_power}", file=log_file)
-        print(f"mask_alpha: {mask_alpha}", file=log_file)
-        print(f"use_zone: {use_zone}", file=log_file)
-        print(f"zone_alpha: {zone_alpha}", file=log_file)
 
     
     global_step = 0
@@ -623,17 +559,9 @@ def main():
         disable=not accelerator.is_local_main_process,
     )
     
-    if use_zone:
-        zone = make_zone(128)
-        zone = (1-zone_alpha) * torch.ones(size=zone.shape) + zone_alpha * zone
-        zone[1:-1] = torch.ones(size=zone[1:-1].shape) # do not apply mask to base 
-        zone = torch.tensor(zone, device=device).float()
 
     best_loss = 1000.0
-    
-    if use_mask:  
-        alphas_cumprod = torch.pow(noise_scheduler.alphas_cumprod, mask_power).to(device=accelerator.device)
-        
+            
     for epoch in range(first_epoch, config['epochs']):
         projector.train()
         train_loss = 0.0
@@ -656,22 +584,6 @@ def main():
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
-                if use_mask:            
-                    mask_latents = batch["mask_pixel_values"][0].to(dtype=weight_dtype)
-
-                    # noisy_mask_latents = alphas_cumprod[timesteps].view(5,-1) \
-                    #         * mask_latents.view(5,-1) \
-                    #     + (1 - alphas_cumprod[timesteps].view(5,-1)) \
-                    #        * torch.ones(size=mask_latents.size()).to(latents.device).view(5, -1)
-
-                    # noisy_mask_latents = (1 - mask_alpha) * torch.ones(size=mask_latents.size()).to(latents.device).view(5, -1) \
-                    #     + mask_alpha * noisy_mask_latents
-                    # noisy_mask_latents = noisy_mask_latents.reshape(5, 4, 128, 128)
-                    # noisy_mask_latents[1:-1] = torch.ones(size=noisy_mask_latents[1:-1].size()).to(latents.device) # do not apply mask to base  
-
-                    noisy_mask_latents = ((1 - noise_scheduler.alphas_cumprod[timesteps.cpu()])**0.5).view(5, 1, 1, 1).to(device)
-                    noisy_mask_latents = noisy_mask_latents.to(device)
-                    noisy_mask_latents = noisy_mask_latents + ((noise_scheduler.alphas_cumprod[timesteps.cpu()]) ** 0.5).view(5, 1, 1, 1).to(device) * mask_latents
     
                 # time ids
                 def compute_time_ids(original_size, crops_coords_top_left):
@@ -760,27 +672,12 @@ def main():
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
-                if use_mask:
-                    loss_target = F.mse_loss(model_pred[:1].float() * noisy_mask_latents[:1].float(),
-                                             target[:1].float() * noisy_mask_latents[:1].float(), reduction="mean")
-                    loss_base = F.mse_loss(model_pred[1:-1].float() * noisy_mask_latents[1:-1].float(),
-                                             target[1:-1].float() * noisy_mask_latents[1:-1].float(), reduction="mean")
-                    loss_aver = F.mse_loss(model_pred[-1:].float() * noisy_mask_latents[-1:].float(),
-                                             target[-1:].float() * noisy_mask_latents[-1:].float(), reduction="mean")
-                elif use_zone:
-                    loss_target = F.mse_loss(model_pred[:1].float() * zone[:1], 
-                                           target[:1].float() * zone[:1], reduction="mean")
-                    loss_base = F.mse_loss(model_pred[1:-1].float() * zone[1:-1],
-                                           target[1:-1].float() * zone[1:-1], reduction="mean")
-                    loss_aver = F.mse_loss(model_pred[-1:].float() * zone[-1:],
-                                           target[-1:].float() * zone[-1:], reduction="mean")
-                else:
-                    loss_target = F.mse_loss(model_pred[:1].float(),
-                                             target[:1].float(), reduction="mean")
-                    loss_base = F.mse_loss(model_pred[1:-1].float(),
-                                             target[1:-1].float(), reduction="mean")
-                    loss_aver = F.mse_loss(model_pred[-1:].float(),
-                                             target[-1:].float(), reduction="mean")
+                loss_target = F.mse_loss(model_pred[:1].float(),
+                                         target[:1].float(), reduction="mean")
+                loss_base = F.mse_loss(model_pred[1:-1].float(),
+                                         target[1:-1].float(), reduction="mean")
+                loss_aver = F.mse_loss(model_pred[-1:].float(),
+                                         target[-1:].float(), reduction="mean")
                 
                 loss = loss_target + config['lambda1'] * loss_base + config['lambda2'] * loss_aver    
                 avg_loss = accelerator.gather(loss.repeat(config['batch_size'])).mean()

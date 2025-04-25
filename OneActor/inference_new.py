@@ -31,7 +31,10 @@ def projector_inference(projector_path, h_target, h_base, device):
         projector = torch.load(projector_path).to(device)
         mid_base_target = h_base + [h_target[-1]]
         mid_base_all = torch.stack(mid_base_target)
+        projector = projector.half()
+        mid_base_all=mid_base_all.half()
         delta_emb_all = projector(mid_base_all[:,-1].to(device))
+
     return delta_emb_all
 
 def pipeline_inference(pipeline, prompt, neg_prompt, config, oneactor_extra_config, generator=None):
@@ -97,9 +100,18 @@ def main():
     pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
 
     # load cluster information
-    xt_dic = load_pickle(target_dir+'/xt_list.pkl')
-    h_base = load_pickle(target_dir+'/base/mid_list.pkl')
-    h_tar = xt_dic['h_mid']
+
+    with open(target_dir+f'/target_data.pkl', 'rb') as f:
+        target_data = pickle.load(f)
+
+    with open(target_dir+f'/base/base_data_list.pkl', 'rb') as f:
+        base_data = pickle.load(f)
+
+
+    h_base = [h['h_mid'][-1] for h in base_data]
+    h_tar = target_data['h_mid']
+
+
     
     # iterate over image list
     for img_num in range(len(config['add_prompts'])):

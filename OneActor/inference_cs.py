@@ -48,7 +48,6 @@ def main():
         ENV_CONFIGS = json.load(f)
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_path', type=str, default='./config/gen_tune_inference.yaml')
-    parser.add_argument('--target_id', type=str, required=True)
     parser.add_argument('--model_id', type=str, required=True)
     args = parser.parse_args()
     # load config
@@ -59,21 +58,10 @@ def main():
     config['file_names'] = ["_".join(prompt.split(" ")) for prompt in config['add_prompts']]
     # make dir and initialize
     tgt_dirs = []
-    target_dir = config['experiments_dir']+'/'+config['target_dir']
-    for _, tgt_dirs, _ in os.walk(target_dir):
-        break
+    target_dir = config['experiments_dir']
         
-    target_id = args.target_id
     model_id = args.model_id
 
-    print(f"target_id = {target_id}")
-
-
-    if target_id not in tgt_dirs:
-        print("Base image is not generated")
-        return
-
-    target_dir += f"/{target_id}"
 
     print(f"model_id = {model_id}")
     
@@ -97,9 +85,19 @@ def main():
     pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
 
     # load cluster information
-    xt_dic = load_pickle(target_dir+'/xt_list.pkl')
+    with open(self.target_root+f'/data_list.pkl', 'rb') as f:
+        data_dic = pickle.load(f)
+
+    h_mid = [d['h_mid'] for d in data_dic]
+
+    base_mid = self.h_mid 
+    h_mid = torch.stack([t[-1] for t in self.h_mid])
+    h_mid = torch.mean(self.h_mid, dim=0)
+    print(self.h_mid.size())
+
     h_base = load_pickle(target_dir+'/base/mid_list.pkl')
     h_tar = xt_dic['h_mid']
+    
     
     # iterate over image list
     for img_num in range(len(config['add_prompts'])):
