@@ -1,5 +1,0 @@
-matplotlib
-torchmetrics
-pandas
-seaborn
-weave
