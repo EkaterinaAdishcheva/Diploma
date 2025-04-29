@@ -1,0 +1,68 @@
+# GENERAL SETTING
+experiments_dir: 'experiments'
+
+target_uuid: 'b4787115'
+model_uuid: '2504141503'
+
+model_type: 'XL'
+size: 1024
+device: 'cuda'
+
+
+target_prompt: 'A rugger adventurer with tousled hair, comic book stile' # CHANGE HERE, MAKE SURE IT CONTAINS THE BASE WORD
+target_dir: 'consistory_adventurer'
+add_target_prompt: ''
+target_neg_prompt: ''
+base: 'adventurer'# CHANGE HERE
+add_prompts: ['a city as background',
+   'the Effel Tower as a background',
+   'the Statue of liberty as a background',
+   'eating a burger',
+   'wearing sunglasses',
+   'standing on a mountain peak',
+   'exploring an ancient temple',
+   'riding a motorcycle',
+   'in a jungle with wild animals',
+   'escaping from an explosion',
+   'running through a futuristic city',
+   'holding a treasure map',
+   'in a sandstorm with a scarf around his face',
+   'jumping between rooftops',
+   'posing heroically in front of a burning building']
+
+steps: 50
+guidance_scale: 7.5
+g_seed: 2100
+gen_base: 10 # Generate auxiliary images
+
+# TUNE
+concept_type: 'character'  # CHANGE HERE, choose from 'character' 'object' 'style'
+t_seed: 8777
+lr: 0.0001
+neg_num: 3 # Auxiliary images used in a batch
+lambda1: 0.5
+lambda2: 0.2
+batch_size: 1 # Fixed
+epochs: 1
+save_steps: 10
+checkpointing_steps: 500
+resume_from_checkpoint: None  # True or None
+xt_to_use: -1
+
+# env config
+use_xformers: True
+allow_tf32: True
+
+
+# INFERENCE
+
+seed: 12018
+inference_steps: 30
+select_steps: [1,20]  # appplying cluster guidance to these steps
+only_step: [200]  # type in a specific step (Recommended) or set to 'best'
+
+v: 0.8 # semantic interpolation scales
+eta_1: 7.5  # target attraction scale
+eta_2: 0  # auxiliary exclusion scale (set to 0 will avoid increasing inference time)
+
+xt_position: -1

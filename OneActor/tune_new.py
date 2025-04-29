@@ -29,7 +29,8 @@ import sys
 sys.path.append("./diffusers")
 
 import diffusers
-from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel, DDIMScheduler
+from diffusers import AutoencoderKL, DDPMScheduler, DDIMScheduler
+from unet_2d_condition import UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
