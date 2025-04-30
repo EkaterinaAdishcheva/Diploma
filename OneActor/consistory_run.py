@@ -118,10 +118,10 @@ def run_anchor_generation(story_pipeline, prompts, concept_token,
 
     if story_pipeline_store is not None:
         story_pipeline_store.first_stage.images.append(out.images)
-        story_pipeline_store.first_stage.prompt_embeds.append(prompt_embeds)
-        story_pipeline_store.first_stage.xt_save.append(xt_save)
-        story_pipeline_store.first_stage.mid_save_list.append(mid_save_list)
-        story_pipeline_store.first_stage.mid_save_vanilla_list.append(mid_save_vanilla_list)
+        story_pipeline_store.first_stage.prompt_embeds.append(prompt_embeds.cpu())
+        story_pipeline_store.first_stage.xt_save.append([_.cpu() for _ in xt_save])
+        story_pipeline_store.first_stage.mid_save_list.append([_.cpu() for _ in mid_save_list])
+        story_pipeline_store.first_stage.prompt.append(prompts)
     
     img_all = view_images([np.array(x) for x in out.images], display_image=False, downscale_rate=downscale_rate)
     
@@ -139,91 +139,10 @@ def run_anchor_generation(story_pipeline, prompts, concept_token,
     nn_map, nn_distances = cyclic_nn_map(dift_features, last_masks, LATENT_RESOLUTIONS, device)
 
     if story_pipeline_store is not None:
-        story_pipeline_store.first_stage.nn_map.append(nn_map)
-        story_pipeline_store.first_stage.nn_distances.append(nn_distances)
+        story_pipeline_store.first_stage.nn_map.append({key: nn_map[key].cpu() for key in nn_map})
+        story_pipeline_store.first_stage.nn_distances.append({key: nn_distances[key].cpu() for key in nn_distances})
 
     torch.cuda.empty_cache()
     gc.collect()
 
     return out.images, img_all, anchor_cache_first_stage
-
-def run_extra_generation(story_pipeline, prompts, concept_token, 
-                         anchor_cache_first_stage, anchor_cache_second_stage=None,
-                         seed=40, n_steps=50, mask_dropout=0.5,
-                         same_latent=False, share_queries=True,
-                         perform_sdsa=True, perform_injection=True,
-                         downscale_rate=4, cache_cpu_offloading=False, story_pipeline_store=None):
-    device = story_pipeline.device
-    tokenizer = story_pipeline.tokenizer
-    float_type = story_pipeline.dtype
-    unet = story_pipeline.unet
-
-    batch_size = len(prompts)
-
-    token_indices = create_token_indices(prompts, batch_size, concept_token, tokenizer)
-
-    default_attention_store_kwargs = {
-        'token_indices': token_indices,
-        'mask_dropout': mask_dropout
-    }
-
-    default_extended_attn_kwargs = {'extend_kv_unet_parts': ['up']}
-    query_store_kwargs={'t_range': [0,n_steps//10], 'strength_start': 0.9, 'strength_end': 0.81836735}
-
-    extra_batch_size = batch_size + 2
-    if isinstance(seed, list):
-        seed = [seed[0], seed[0], *seed]
-
-    latents, g = create_latents(story_pipeline, seed, extra_batch_size, same_latent, device, float_type)
-    latents = latents[2:]
-
-    anchor_cache_first_stage.set_mode_inject()
-
-    # ------------------ #
-    # Extended attention First Run #
-
-    if cache_cpu_offloading:
-        anchor_cache_first_stage.to_device(device)
-
-    if perform_sdsa:
-        extended_attn_kwargs = {**default_extended_attn_kwargs, 't_range': [(1, n_steps)]}
-    else:
-        extended_attn_kwargs = {**default_extended_attn_kwargs, 't_range': []}
-
-    print(extended_attn_kwargs['t_range'])
-    out, prompt_embeds, xt_save, mid_save_list, mid_save_vanilla_list = story_pipeline(prompt=prompts, generator=g, latents=latents, 
-                        attention_store_kwargs=default_attention_store_kwargs,
-                        extended_attn_kwargs=extended_attn_kwargs,
-                        share_queries=share_queries,
-                        query_store_kwargs=query_store_kwargs,
-                        anchors_cache=anchor_cache_first_stage,
-                        num_inference_steps=n_steps)
-
-    if story_pipeline_store is not None:
-        story_pipeline_store.first_stage.images.append(out.images)
-        story_pipeline_store.first_stage.prompt_embeds.append(prompt_embeds)
-        story_pipeline_store.first_stage.xt_save.append(xt_save)
-        story_pipeline_store.first_stage.mid_save_list.append(mid_save_list)
-        story_pipeline_store.first_stage.mid_save_vanilla_list.append(mid_save_vanilla_list)
-
-    img_all = view_images([np.array(x) for x in out.images], display_image=False, downscale_rate=downscale_rate)
-    out_images_first_stage = out.images
-
-    last_masks = story_pipeline.attention_store.last_mask
-
-    dift_features = unet.latent_store.dift_features['261_0'][batch_size:]
-    dift_features = torch.stack([gaussian_smooth(x, kernel_size=3, sigma=1) for x in dift_features], dim=0)
-
-    anchor_dift_features = anchor_cache_first_stage.dift_cache
-    anchor_last_masks = anchor_cache_first_stage.anchors_last_mask
-
-    nn_map, nn_distances = anchor_nn_map(dift_features, anchor_dift_features, last_masks, anchor_last_masks, LATENT_RESOLUTIONS, device)
-
-    if story_pipeline_store is not None:
-        story_pipeline_store.first_stage.nn_map.append(nn_map)
-        story_pipeline_store.first_stage.nn_distances.append(nn_distances)
-
-    torch.cuda.empty_cache()
-    gc.collect()
-    
-    return out.images, img_all

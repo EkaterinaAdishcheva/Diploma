@@ -1,0 +1,17 @@
+target_prompt: 'a digital painting of a teenage girl with black hair, a slight build'
+base: 'girl' # CHANGE HERE
+add_prompts: ['sitting on a rainy city street at night',
+   'lying on a grassy hill at sunset',
+   'standing in a crowded train station',
+   'wearing a long coat and scarf',
+   'wearing sunglasses',
+   'floating underwater in a surreal dreamscape',
+   'perched on a rooftop at dusk with headphones on',
+   'standing in front of a mirror',
+   'illuminated by the glow of her laptop screen',
+   'walking through autumn leaves',
+   'wearing a school uniform',
+   'holding a treasure map',
+   'in a sandstorm with a scarf around his face',
+   'sitting on a park bench feeding birds',
+   'staring at stars from her bedroom window']

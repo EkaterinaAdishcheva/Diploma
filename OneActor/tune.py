@@ -5,7 +5,6 @@ import os
 import random
 import shutil
 import yaml
-import shutil
 import json
 import numpy as np
 import PIL
@@ -16,6 +15,8 @@ import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
+import xformers
+
 
 from packaging import version
 from PIL import Image
@@ -24,49 +25,41 @@ from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
-import sys
-sys.path.append("./diffusers")
+import wandb
+import torch.nn.functional as F
 
 import diffusers
-from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel, DDIMScheduler
+from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
+from dataset import OneActorDataset
+
 import pickle
-import uuid
-from datetime import datetime
 
 from projector import Projector
 
 torch.autograd.set_detect_anomaly(True)
 
-if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
-    PIL_INTERPOLATION = {
-        "linear": PIL.Image.Resampling.BILINEAR,
-        "bilinear": PIL.Image.Resampling.BILINEAR,
-        "bicubic": PIL.Image.Resampling.BICUBIC,
-        "lanczos": PIL.Image.Resampling.LANCZOS,
-        "nearest": PIL.Image.Resampling.NEAREST,
-    }
-else:
-    PIL_INTERPOLATION = {
-        "linear": PIL.Image.LINEAR,
-        "bilinear": PIL.Image.BILINEAR,
-        "bicubic": PIL.Image.BICUBIC,
-        "lanczos": PIL.Image.LANCZOS,
-        "nearest": PIL.Image.NEAREST,
-    }
-# ------------------------------------------------------------------------------
-# Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-# check_min_version("0.26.0.dev0")
-
-
+from datetime import datetime
 import numpy as np
+
+torch.autograd.set_detect_anomaly(True)
 
 logger = get_logger(__name__)
 
-import torch.nn.functional as F
+def init_wanddb(config=None):
+    wandb.init(project="OneActor", entity="eadishcheva")
+    run = wandb.init(
+        # Set the wandb entity where your project will be logged (generally your team name).
+        entity="eadishcheva",
+        # Set the wandb project where this run will be logged.
+        project="OneActor",
+        # Track hyperparameters and run metadata.
+        config=config,
+    )
+    return run
 
 def import_model_class_from_model_name_or_path(
     pretrained_model_name_or_path: str, revision: str = None, subfolder: str = "text_encoder"
@@ -95,287 +88,33 @@ def save_progress(projector, accelerator, save_path):
 
     torch.save(learned_projector, save_path)
 
-
-human_templates = [
-    "a photo of a {}",
-    "a portrait of a {}",
-    "a cropped photo of the {}",
-    "the photo of a {}",
-    "a photo of a beautiful {}",
-    "a realistic photo of a {}",
-    "a dark photo of the {}",
-    "a character photo of a {}",
-    "a photo of the cool {}",
-    "a close-up photo of a {}",
-    "a face photo of the {}",
-    "a cropped face of a {}",
-    "a photo of the {}",
-    "a good photo of the {}",
-    "a high-quality photo of one {}",
-    "a close-up photo of the {}",
-    "a rendition of the {}",
-    "a photo of the clean {}",
-    "a rendition of a {}",
-    "a photo of a nice {}",
-    "a good photo of a {}",
-    "an image of a {}",
-    "a snapshot of a {}",
-    "a person's photo of a {}",
-    "an individual's photo of a {}",
-]
-
-imagenet_templates_small = [
-    "a photo of a {}",
-    "a rendering of a {}",
-    "a cropped photo of the {}",
-    "the photo of a {}",
-    "a photo of a clean {}",
-    "a photo of a dirty {}",
-    "a dark photo of the {}",
-    "a photo of my {}",
-    "a photo of the cool {}",
-    "a close-up photo of a {}",
-    "a bright photo of the {}",
-    "a cropped photo of a {}",
-    "a photo of the {}",
-    "a good photo of the {}",
-    "a photo of one {}",
-    "a close-up photo of the {}",
-    "a rendition of the {}",
-    "a photo of the clean {}",
-    "a rendition of a {}",
-    "a photo of a nice {}",
-    "a good photo of a {}",
-    "a photo of the nice {}",
-    "a photo of the small {}",
-    "a photo of the weird {}",
-    "a photo of the large {}",
-    "a photo of a cool {}",
-    "a photo of a small {}",
-]
-
-imagenet_style_templates_small = [
-    "a painting in the style of {}",
-    "a rendering in the style of {}",
-    "a cropped painting in the style of {}",
-    "the painting in the style of {}",
-    "a clean painting in the style of {}",
-    "a dirty painting in the style of {}",
-    "a dark painting in the style of {}",
-    "a picture in the style of {}",
-    "a cool painting in the style of {}",
-    "a close-up painting in the style of {}",
-    "a bright painting in the style of {}",
-    "a cropped painting in the style of {}",
-    "a good painting in the style of {}",
-    "a close-up painting in the style of {}",
-    "a rendition in the style of {}",
-    "a nice painting in the style of {}",
-    "a small painting in the style of {}",
-    "a weird painting in the style of {}",
-    "a large painting in the style of {}",
-]
-
-
-def make_zone(size):
-    zone = np.zeros(shape=(5, 4, size,size))
-    for i1 in range(5):
-        for i2 in range(4):
-            for i in range(size):
-                for j in range(size):
-                    zone[i1, i2, i,j] \
-                    = 1/(1 + np.e**(-((j-size/2)/(size/4))**2 - ((i-size/3)/(size/4))**2)) * (1 - 1/(1 + np.e**(-((j-size/2)/(size/4))**2 -((i-size/3)/(size/4))**2))) * 4
-    return zone
-    
-# input: latent_sequence(con&uncon), prompt_embed, prompt, base_prompt
-# input: latent_sequence(con&uncon), prompt_embed, prompt, base_prompt
-class OneActorDataset(Dataset):
-    def __init__(
-        self,
-        target_dir,
-        config,
-        use_mask=False,
-        repeats=50,
-        interpolation="bicubic",
-        flip_p=0.5,
-        set="train",
-    ):
-        self.target_root = target_dir
-        self.learnable_property = config['concept_type']
-        self.size = config['size']
-        self.latent_size = 128
-        self.base_condition = config['base']
-        self.flip_p = flip_p
-        self.neg_num = config['neg_num']
-        self.use_mask = use_mask
-        
-        self.image_paths = [
-            os.path.join(self.target_root, file_path) for file_path in os.listdir(self.target_root) \
-                if os.path.splitext(file_path)[1] == '.jpg']
-        if self.use_mask:
-            self.mask_image_paths = [f[:-4] + "_mask.png" for f in self.image_paths]
-        self.base_root = self.target_root + '/base'
-        self.base_paths = [
-            os.path.join(self.base_root, file_path) for file_path in os.listdir(self.base_root) \
-                if os.path.splitext(file_path)[1] == '.jpg']
-
-        self.num_images = len(self.image_paths)
-        self.num_base = len(self.base_paths)
-        self._length = self.num_images * 2
-
-        if set == "train":
-            self._length = self.num_images * repeats * 2
-            self._length = 200
-
-        self.interpolation = {
-            "linear": PIL_INTERPOLATION["linear"],
-            "bilinear": PIL_INTERPOLATION["bilinear"],
-            "bicubic": PIL_INTERPOLATION["bicubic"],
-            "lanczos": PIL_INTERPOLATION["lanczos"],
-        }[interpolation]
-        if self.learnable_property == 'character':
-            self.templates = human_templates
-        elif self.learnable_property == 'object':
-            self.templates = imagenet_templates_small
-        elif self.learnable_property == 'style':
-            self.templates = imagenet_style_templates_small
-        self.flip_transform = transforms.RandomHorizontalFlip(p=self.flip_p)    # randomly flip images
-
-        with open(self.target_root+f'/xt_list.pkl', 'rb') as f:
-            xt_dic = pickle.load(f)
-
-        self.h_mid = xt_dic['h_mid']
-        self.prompt_embed = xt_dic['prompt_embed']
-
-        with open(self.base_root+f'/mid_list.pkl', 'rb') as f:
-            self.base_mid = pickle.load(f)
-
-
-    def __len__(self):
-        return self._length
-
-    def __getitem__(self, i):
-        example = {}
-
-        img_paths = []
-        h_mid_list = []
-        # target samples
-        
-        if self.use_mask:
-            mask_tensor = []
-            target_img_path, mask_target_img_path = random.choice(list(
-                zip(self.image_paths, self.mask_image_paths))
-            )
-        else:
-            target_img_path = random.choice(self.image_paths)
-            
-        img_paths.append(target_img_path)
-
-        h_mid_list.append(self.h_mid[-1])
-        # base samples
-        for i in range(self.neg_num):
-            ind = random.randint(0, len(self.base_paths)-1)
-            img_paths.append(self.base_paths[ind])
-            h_mid_list.append(self.base_mid[ind])
-        h_mid_list.append(random.choice(h_mid_list))
-        
-        img_tensors = []
-        text_list = []
-        flip_ind = []
-            
-        for img_path in img_paths:
-
-            image = Image.open(img_path)
-
-            if not image.mode == "RGB":
-                image = image.convert("RGB")
-            # default to score-sde preprocessing
-            image = np.array(image).astype(np.uint8)
-            image = Image.fromarray(image)
-            image = image.resize((self.size, self.size), resample=self.interpolation)
-            image_f = self.flip_transform(image)
-            _flip_ind = image_f != image
-            flip_ind.append(_flip_ind)
-
-            image = image_f
-            image = np.array(image).astype(np.uint8)
-            image = (image / 127.5 - 1.0).astype(np.float32)
-
-            img_tensors.append(torch.from_numpy(image).permute(2, 0, 1))
-
-            text = random.choice(self.templates).format(self.base_condition)
-            text_list.append(text)
-
-        if self.use_mask:
-            mask_tensors = []
-            mask = Image.open(mask_target_img_path)
-            if not mask.mode == "RGB":
-                mask = mask.convert("RGB")
-                mask = np.array(mask).astype(np.uint8)
-            if flip_ind[0]:
-                mask = mask[:,::-1]
-            # default to score-sde preprocessing
-    
-            mask = Image.fromarray(mask)
-            mask = mask.resize((self.latent_size, self.latent_size), resample=self.interpolation)
-            mask = np.array(mask).astype(np.uint8)
-            mask = (mask / np.max(mask) ).astype(np.float32)
-            mask = np.concatenate((mask, mask[:,:,:1]), axis=2) # make 4 channels
-     
-            mask_tensors.append(torch.from_numpy(mask).permute(2, 0, 1))
-            for i in range(len(img_tensors) - len(mask_tensors)):
-                mask_tensors.append(torch.ones(size=mask.shape).permute(2, 0, 1))
-            mask_tensors.append(mask_tensors[0])
-
-        img_tensors.append(img_tensors[0])
-        text_list.append(text_list[0])
-
-        example["pixel_values"] = torch.stack(img_tensors)
-        if self.use_mask:
-            example["mask_pixel_values"] = torch.stack(mask_tensors)
-        example['text'] = text_list
-        example['base'] = self.base_condition
-        example['h_mid'] = torch.stack(h_mid_list)
-    
-        return example    
-    
 def main():
     
     # get environment configs
     with open("PATH.json","r") as f:
         ENV_CONFIGS = json.load(f)
     # get user configs
+    
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config_path', type=str, default='./config/gen_tune_inference.yaml')
+    parser.add_argument('--config_path', type=str, default='config/config.yaml')
+    parser.add_argument('--prompt_path', type=str, default='config/prompt-girl.yaml')
+    parser.add_argument('--dir_name', type=str, required=True)
     parser.add_argument('--use_mask', type=bool, default=False)
-    parser.add_argument('--use_zone', type=bool, default=False)
-    parser.add_argument('--mask_power', type=float, default=1)
-    parser.add_argument('--mask_alpha', type=float, default=0.5)
-    parser.add_argument('--zone_alpha', type=float, default=0.5)
-    parser.add_argument('--target_id', type=str, required=True)
+    parser.add_argument('--mask_power', type=float, default=0.5)
 
+    
     args = parser.parse_args()
-
+    
     with open(args.config_path, "r") as f:
         config = yaml.safe_load(f)
+    with open(args.prompt_path, "r") as f:
+        prompt = yaml.safe_load(f)
+
     device = config['device']
 
     
-    target_dir = config['experiments_dir']+'/'+config['target_dir']
-    for _, tgt_dirs, _ in os.walk(target_dir):
-        break
+    target_dir = config['experiments_dir']+'/'+args.dir_name
     
-    target_id = args.target_id
-
-    print(f"target_id = {target_id}")
-
-
-    if target_id not in tgt_dirs:
-        print("Base image is not generated")
-        return
-
-    target_dir += f"/{target_id}"
-
     
     accelerator_project_config = ProjectConfiguration(project_dir=target_dir, logging_dir='logs')
     accelerator = Accelerator(
@@ -401,22 +140,19 @@ def main():
     # If passed along, set the training seed now.
     if config['t_seed'] is not None:
         set_seed(config['t_seed'])
-
-    use_mask, use_zone, mask_power, mask_alpha, zone_alpha = args.use_mask, args.use_zone, args.mask_power, args.mask_alpha ,args.zone_alpha  
-    if use_mask and use_zone:
-        use_zone = False
     
+    use_mask, mask_power = args.use_mask, args.mask_power
+
     # Handle the repository creation
     now = datetime.now()
-
-    train_uuid = now.strftime("%y%m%d%H%M") # uuid.uuid4()
-    train_uuid = str(train_uuid)
-    output_dir = f"{target_dir}/output_{train_uuid}"
+    train_id = now.strftime("%y%m%d%H%M") # uuid.uuid4()
+    train_id = str(train_id)
+    output_dir = f"{target_dir}/train_{train_id}"
     if accelerator.is_main_process:
         os.makedirs(output_dir, exist_ok=True)
         os.makedirs(f"{output_dir}/ckpt", exist_ok=True)
         os.makedirs(f"{output_dir}/weight", exist_ok=True)
-        shutil.copyfile(args.config_path, f"{output_dir}/config_{train_uuid}.yaml")
+        shutil.copyfile(args.config_path, f"{output_dir}/config_{train_id}.yaml")
 
     # Load Models
     pretrained_model_name_or_path = ENV_CONFIGS['paths']['sdxl_path']
@@ -471,24 +207,8 @@ def main():
     # Fire projector
     projector.requires_grad_(True)
 
-    
-    if config['use_xformers']:
-        if is_xformers_available():
-            import xformers
-
-            xformers_version = version.parse(xformers.__version__)
-            if xformers_version == version.parse("0.0.16"):
-                logger.warn(
-                    "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
-                )
-            unet.enable_xformers_memory_efficient_attention()
-        else:
-            raise ValueError("xformers is not available. Make sure it is installed correctly")
-
-    # Enable TF32 for faster training on Ampere GPUs,
-    # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
-    if config['allow_tf32']:
-        torch.backends.cuda.matmul.allow_tf32 = True
+    unet.enable_xformers_memory_efficient_attention()
+    torch.backends.cuda.matmul.allow_tf32 = True
 
     # Initialize the optimizer
     optimizer = torch.optim.AdamW(
@@ -502,7 +222,7 @@ def main():
     # Dataset and DataLoaders creation:
     train_dataset = OneActorDataset(
         target_dir=target_dir,
-        config=config,
+        config=prompt,
         use_mask=use_mask,
         set='train',
     )
@@ -545,9 +265,8 @@ def main():
         unet.to(accelerator.device, dtype=weight_dtype)
         text_encoder_one.to(accelerator.device, dtype=weight_dtype)
         text_encoder_two.to(accelerator.device, dtype=weight_dtype)
-
-    with torch.cuda.amp.autocast(dtype=torch.float32):
-        vae.to(accelerator.device)
+    
+    vae.to(accelerator.device, dtype=torch.float32)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader))
@@ -571,8 +290,10 @@ def main():
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
     logger.info(f"  Gradient Accumulation steps = {1}")
     logger.info(f"  Total optimization steps = {max_train_steps}")
-    logger.info(f"  Dataset = {target_dir}, output_{train_uuid}")
-    logger.info(f"  Train parameters: (mask, mask_power, mask_alpha) = ({use_mask}, {mask_power}, {mask_alpha}), (zone, zone_alpha) = ({use_zone}, {zone_alpha})")
+    logger.info(f"  dir_name = {args.dir_name}")
+    logger.info(f"  output_dir = train_{train_id}")
+    logger.info(f"  use_mask = {use_mask}")
+    logger.info(f"  mask_power = {mask_power if use_mask else 'NA'}")
 
     with open(f"{output_dir}/log_train.log", 'w') as log_file:
         print(f"num_examples: {len(train_dataset)}", file=log_file)
@@ -580,41 +301,24 @@ def main():
         print(f"batch_size: {config['batch_size']}", file=log_file)
         print(f"total_batch_size: {total_batch_size}", file=log_file)
         print(f"max_train_steps: {max_train_steps}", file=log_file)
-        print(f"target_dir: '{target_dir}'", file=log_file)
-        print(f"train_uuid: '{train_uuid}'", file=log_file)
+        print(f"dir_name: '{args.dir_name}'", file=log_file)
+        print(f"output_dir: 'train_{train_id}'", file=log_file)
         print(f"use_mask: {use_mask}", file=log_file)
-        print(f"mask_power: {mask_power}", file=log_file)
-        print(f"mask_alpha: {mask_alpha}", file=log_file)
-        print(f"use_zone: {use_zone}", file=log_file)
-        print(f"zone_alpha: {zone_alpha}", file=log_file)
+        print(f"mask_power: {mask_power if use_mask else 'NA'}", file=log_file)
 
+    run = init_wanddb(config={
+        "thema":args.dir_name,
+        "exp_id":train_id,
+        "model_id":train_id,
+        "use_mask":use_mask,
+        "mask_power":mask_power if use_mask else 'NA',
+        "epoch":train_dataset.__len__(),
+    })
     
     global_step = 0
     first_epoch = 0
-    # Potentially load in the weights and states from a previous save
-    if config['resume_from_checkpoint'] is not None:
-        # Get the most recent checkpoint
-        dirs = os.listdir(output_dir+'/ckpt')
-        dirs = [d for d in dirs if d.startswith("checkpoint")]
-        dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
-        path = dirs[-1] if len(dirs) > 0 else None
-
-        if path is None:
-            accelerator.print(
-                f"Checkpoint does not exist. Starting a new training run."
-            )
-            initial_global_step = 0
-        else:
-            accelerator.print(f"Resuming from checkpoint {path}")
-            accelerator.load_state(os.path.join(output_dir, 'ckpt', path))
-            global_step = int(path.split("-")[1])
-
-            initial_global_step = global_step
-            first_epoch = global_step // num_update_steps_per_epoch
-
-    else:
-        initial_global_step = 0
-
+    initial_global_step = 0
+    
     progress_bar = tqdm(
         range(0, max_train_steps),
         initial=initial_global_step,
@@ -623,27 +327,19 @@ def main():
         disable=not accelerator.is_local_main_process,
     )
     
-    if use_zone:
-        zone = make_zone(128)
-        zone = (1-zone_alpha) * torch.ones(size=zone.shape) + zone_alpha * zone
-        zone[1:-1] = torch.ones(size=zone[1:-1].shape) # do not apply mask to base 
-        zone = torch.tensor(zone, device=device).float()
-
     best_loss = 1000.0
-    
-    if use_mask:  
-        alphas_cumprod = torch.pow(noise_scheduler.alphas_cumprod, mask_power).to(device=accelerator.device)
-        
+
+    projector_res = []
+
+            
     for epoch in range(first_epoch, config['epochs']):
         projector.train()
         train_loss = 0.0
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(projector):
-                # import pdb; pdb.set_trace()
-                # Convert images to latent space
    
                 images = batch["pixel_values"][0].to(dtype=torch.float32)
-                latents = vae.encode(batch["pixel_values"][0]).latent_dist.sample().detach()                    
+                latents = vae.encode(images).latent_dist.sample().detach()                    
                 latents.to(dtype=weight_dtype)
                 latents = latents * vae.config.scaling_factor
                 # Sample noise that we'll add to the latents
@@ -659,19 +355,12 @@ def main():
                 if use_mask:            
                     mask_latents = batch["mask_pixel_values"][0].to(dtype=weight_dtype)
 
-                    # noisy_mask_latents = alphas_cumprod[timesteps].view(5,-1) \
-                    #         * mask_latents.view(5,-1) \
-                    #     + (1 - alphas_cumprod[timesteps].view(5,-1)) \
-                    #        * torch.ones(size=mask_latents.size()).to(latents.device).view(5, -1)
-
-                    # noisy_mask_latents = (1 - mask_alpha) * torch.ones(size=mask_latents.size()).to(latents.device).view(5, -1) \
-                    #     + mask_alpha * noisy_mask_latents
-                    # noisy_mask_latents = noisy_mask_latents.reshape(5, 4, 128, 128)
-                    # noisy_mask_latents[1:-1] = torch.ones(size=noisy_mask_latents[1:-1].size()).to(latents.device) # do not apply mask to base  
-
-                    noisy_mask_latents = ((1 - noise_scheduler.alphas_cumprod[timesteps.cpu()])**0.5).view(5, 1, 1, 1).to(device)
-                    noisy_mask_latents = noisy_mask_latents.to(device)
-                    noisy_mask_latents = noisy_mask_latents + ((noise_scheduler.alphas_cumprod[timesteps.cpu()]) ** 0.5).view(5, 1, 1, 1).to(device) * mask_latents
+                    noisy_mask_latents = mask_latents
+                    # noisy_mask_latents = ((1 - noise_scheduler.alphas_cumprod[timesteps.cpu()])**mask_power).view(bsz, 1, 1, 1).to(device)
+                    # noisy_mask_latents = noisy_mask_latents.to(device)
+                    # noisy_mask_latents = noisy_mask_latents \
+                    #         + ((noise_scheduler.alphas_cumprod[timesteps.cpu()])**mask_power).view(bsz, 1, 1, 1).to(device) * mask_latents
+                    
     
                 # time ids
                 def compute_time_ids(original_size, crops_coords_top_left):
@@ -694,6 +383,7 @@ def main():
                 prompt_embeds_batch_list = []
                 add_text_embeds_batch_list = []
                 delta_emb = projector(batch['h_mid'][0, :, -1].to(device)) # torch.size(bs, 1280, 32, 32) -> torch.size(bs, 2048)
+                projector_res.append(delta_emb.cpu())
                 delta_emb_aver = delta_emb[1:-1].mean(dim=0, keepdim=True)
                 for b_s in range(bsz): # 1*target+n*base+1*aver
                     prompt = batch['text'][b_s][0] # str
@@ -767,13 +457,6 @@ def main():
                                              target[1:-1].float() * noisy_mask_latents[1:-1].float(), reduction="mean")
                     loss_aver = F.mse_loss(model_pred[-1:].float() * noisy_mask_latents[-1:].float(),
                                              target[-1:].float() * noisy_mask_latents[-1:].float(), reduction="mean")
-                elif use_zone:
-                    loss_target = F.mse_loss(model_pred[:1].float() * zone[:1], 
-                                           target[:1].float() * zone[:1], reduction="mean")
-                    loss_base = F.mse_loss(model_pred[1:-1].float() * zone[1:-1],
-                                           target[1:-1].float() * zone[1:-1], reduction="mean")
-                    loss_aver = F.mse_loss(model_pred[-1:].float() * zone[-1:],
-                                           target[-1:].float() * zone[-1:], reduction="mean")
                 else:
                     loss_target = F.mse_loss(model_pred[:1].float(),
                                              target[:1].float(), reduction="mean")
@@ -781,11 +464,18 @@ def main():
                                              target[1:-1].float(), reduction="mean")
                     loss_aver = F.mse_loss(model_pred[-1:].float(),
                                              target[-1:].float(), reduction="mean")
-                
+                    
                 loss = loss_target + config['lambda1'] * loss_base + config['lambda2'] * loss_aver    
                 avg_loss = accelerator.gather(loss.repeat(config['batch_size'])).mean()
                 train_loss += avg_loss.item()
-    
+
+                if len(projector_res) == 1:
+                    diff = ((projector_res[-1]) ** 2).sum() ** 0.5
+                else:
+                    diff = ((projector_res[-1] - projector_res[-2]) ** 2).sum() ** 0.5
+                run.log({"loss": loss, "diff": diff})
+
+
                 accelerator.backward(loss)
     
                 optimizer.step()
@@ -838,6 +528,8 @@ def main():
    
     print(f'Best loss:{best_loss} @@@ Step:{best_step}')
     accelerator.end_training()
+    # Finish the run and upload any remaining data.
+    run.finish()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,41 @@
+# GENERAL SETTING
+experiments_dir: './experiments'
+
+model_type: 'XL'
+size: 1024
+device: 'cuda'
+
+steps: 50
+guidance_scale: 7.5
+g_seed: 20000
+
+# TUNE
+concept_type: 'character'  # CHANGE HERE, choose from 'character' 'object' 'style'
+t_seed: 20000
+lr: 0.0001
+neg_num: 3 # Auxiliary images used in a batch
+lambda1: 0.5
+lambda2: 0.2
+batch_size: 1 # Fixed
+epochs: 1
+save_steps: 20
+checkpointing_steps: 500
+resume_from_checkpoint: None  # True or None
+xt_to_use: -1
+
+# env config
+use_xformers: True
+allow_tf32: True
+
+
+# INFERENCE
+
+seed: 20000
+inference_steps: 30
+only_step: [200]  # type in a specific step (Recommended) or set to 'best'
+
+v: 0.8 # semantic interpolation scales
+eta_1: 7.5  # target attraction scale
+eta_2: 0  # auxiliary exclusion scale (set to 0 will avoid increasing inference time)
+
+xt_position: -1

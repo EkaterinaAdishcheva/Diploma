@@ -23,16 +23,14 @@ class StageStore:
         self.prompt_embeds = []
         self.xt_save = []
         self.mid_save_list = []
-        self.mid_save_vanilla_list = []
         self.images = []
         self.nn_map = []
         self.nn_distances = []
+        self.prompt = []
 
 class StoryPipelineStore:
     def __init__(self):
         self.first_stage = StageStore()
-        self.second_stage = StageStore()
-
 
 class FeatureInjector:
     def __init__(self, nn_map, nn_distances, attn_masks, inject_range_alpha=[(10,20,0.8)], swap_strategy='min', dist_thr='dynamic', inject_unet_parts=['up']):
