@@ -20,7 +20,9 @@ from torchmetrics.multimodal.clip_score import CLIPScore
 import torch
 import pandas as pd
 
-ROOT = "/workspace/Diploma/OneActor/experiments"
+# from deepface import DeepFace
+
+ROOT = "/workspace/experiments"
 
 def main():
     
@@ -38,7 +40,7 @@ def main():
     dreamsim_model, preprocess = dreamsim(pretrained=True, device=device)
     clip_score_metric = CLIPScore(model_name_or_path="openai/clip-vit-base-patch16").to(device)
 
-    file_target = f"{ROOT}/{dir_name}/target.jpg"
+    file_target = f"{ROOT}/{dir_name}/{'target.jpg'if train_id == 'model_Mask' else 'oa_source.jpg'}"
     img1 = Image.open(file_target)
     img1 = np.array(img1.convert("RGB"))
     img1 = torch.from_numpy(img1).permute(2, 0, 1).to(device)
@@ -46,7 +48,8 @@ def main():
     for _, _, files in os.walk(f"{ROOT}/{dir_name}/{train_id}/inference"):
         break
 
-    print(files)
+    files = [f for f in files if '.jpg' in f]
+
     results = {}
     for n, file_name in tqdm(enumerate(files)):
         results[file_name] = {}
@@ -66,7 +69,19 @@ def main():
         distance = dreamsim_model(img1, img2)
         results[_file_name]['dreamsim'] = float(distance.cpu().detach().numpy()[0])
 
+    # for n, _file_name in tqdm(enumerate(files)):
+    #     try:
+    #         file_name = _file_name    
+    #         img2 = f"{ROOT}/{dir_name}/{train_id}/inference/{_file_name}"
+    #         distance = DeepFace.verify(img1_path=file_target, img2_path=img2, model="Facenet512")['distance']
+    #         results[_file_name]['DeepFace'] = distance
+    #     except:
+    #         print(_file_name)
+    #         results[_file_name]['DeepFace'] = 3
+        
     df = pd.DataFrame(results).T.reset_index()
+    aggres = aggres = df[['CLIPScore', 'dreamsim']].mean().values
+    print(f"🔥🔥🔥 {dir_name}/{train_id}:  {aggres}")
     df.to_csv(f"{ROOT}/{dir_name}/{train_id}/metrics.csv", index=False)
 
 if __name__ == '__main__':

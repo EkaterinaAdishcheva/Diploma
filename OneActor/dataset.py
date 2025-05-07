@@ -66,7 +66,7 @@ class OneActorDataset(Dataset):
 
         self.base_condition = config['base']
         self.flip_p = flip_p
-        self.neg_num = 5
+        self.neg_num = config['neg_num']
 
         self.use_mask = use_mask
         
@@ -88,7 +88,7 @@ class OneActorDataset(Dataset):
 
         self.num_base = len(self.base_image_paths)
 
-        self._length = 200
+        self._length = repeats
         self.interpolation = {
             "linear": PIL_INTERPOLATION["linear"],
             "bilinear": PIL_INTERPOLATION["bilinear"],
@@ -110,6 +110,8 @@ class OneActorDataset(Dataset):
         self.h_mid = self.target_data['h_mid']
         self.prompt_embed = self.target_data['prompt_embed']
         self.base_mid = [h['h_mid'][-1] for h in self.base_data]
+        base_data_mean = torch.stack(self.base_mid)
+        self.base_data_mean = base_data_mean.mean(dim=0)
 
         if self.use_mask:
             self.target_mask = self.target_data['mask_64']
@@ -177,7 +179,7 @@ class OneActorDataset(Dataset):
 
         img_tensors.append(img_tensors[0])
         text_list.append(text_list[0])
-        h_mid_list.append(random.choice(h_mid_list))
+        h_mid_list.append(self.base_data_mean)
 
         example["pixel_values"] = torch.stack(img_tensors)
         if self.use_mask:
