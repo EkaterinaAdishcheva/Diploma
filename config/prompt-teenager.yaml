@@ -1,0 +1,19 @@
+target_prompt: 'a handsome teenager wearing shorts and canvas shoes, digital painting'
+base: 'teenager' # CHANGE HERE
+add_prompts: ['a city as background',
+   'the Effel Tower as a background',
+   'the Statue of liberty as a background',
+   'eating a burger',
+   'wearing sunglasses',
+   'standing in the mall',
+   'sitting on a park bench',
+   'next to a bike',
+   'walking on the beach',
+   'with a sunset behind him',
+   'holding a skateboard',
+   'at a music festival',
+   'under neon lights',
+   'in front of a graffiti wall',
+   'waiting at a bus stop']
+
+

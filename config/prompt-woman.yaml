@@ -1,0 +1,19 @@
+target_prompt: 'a young woman with long wavy hair wairing sundress, photo realistic'
+base: 'woman' # CHANGE HERE
+add_prompts: [
+   'standing in wildflowers',
+   'walking on sunset beach',
+   'sitting at cafe',
+   'leaning on a fence',
+    'reading a book in a field',
+    'riding a bicycle through the countryside',
+    'looking out over a cliffside ocean view',
+    'lying on a picnic blanket',
+    'twirling in the breeze',
+    'standing in a lavender field',
+    'walking through a cobblestone street',
+    'smiling under cherry blossoms',
+    'gazing out a train window',
+    'holding a sunhat in the wind',
+    'knitting a sweater'
+   ]
