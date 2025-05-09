@@ -59,8 +59,7 @@ if __name__ == '__main__':
         print(f"💥 The directory {config['experiments_dir']}/{opt.dir_name} is already exists")
         output_dir = f"{config['experiments_dir']}/{opt.dir_name}"   
     else:
-        output_dir = f"{config['experiments_dir']}/{opt.dir_name}"
-    # output_dir = f"{config['experiments_dir']}/{now}_{concept_token[0]}"
+        output_dir = f"{config['experiments_dir']}/{opt.dir_name}_{concept_token[0]}"
     print(f"✅ Save images to {output_dir}")
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(f"{output_dir}/base", exist_ok=True)
@@ -85,7 +84,7 @@ if __name__ == '__main__':
     random_settings = random.sample(settings, 4)
     prompts = [f'{subject} {setting}' for setting in random_settings]
     anchor_out_images, anchor_image_all, anchor_cache_first_stage = \
-            run_anchor_generation(story_pipeline, prompts[:6], concept_token, 
+            run_anchor_generation(story_pipeline, prompts, concept_token, 
                            seed=seed, mask_dropout=mask_dropout, same_latent=same_latent,
                            cache_cpu_offloading=True, story_pipeline_store=story_pipeline_store)
 

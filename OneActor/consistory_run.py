@@ -127,7 +127,8 @@ def run_anchor_generation(story_pipeline, prompts, concept_token,
     
     last_masks = story_pipeline.attention_store.last_mask
 
-    dift_features = unet.latent_store.dift_features['261_0'][batch_size:]
+    # dift_features = unet.latent_store.dift_features['261_0'][batch_size:]
+    dift_features = unet.latent_store.dift_features['21_0'][batch_size:]
     dift_features = torch.stack([gaussian_smooth(x, kernel_size=3, sigma=1) for x in dift_features], dim=0)
 
     anchor_cache_first_stage.dift_cache = dift_features
