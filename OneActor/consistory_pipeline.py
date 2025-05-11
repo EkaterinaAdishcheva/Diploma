@@ -314,7 +314,6 @@ class ConsistoryExtendAttnSDXLPipeline(
 
         timesteps = self.scheduler.timesteps
 
-        print(timesteps)
 
         # 5. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels

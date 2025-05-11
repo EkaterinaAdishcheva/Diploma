@@ -73,7 +73,7 @@ def create_latents(story_pipeline, seed, batch_size, same_latent, device, float_
 
 # Anchors
 def run_anchor_generation(story_pipeline, prompts, concept_token,
-                        seed=40, n_steps=50, mask_dropout=0.5,
+                        seed=40, n_steps=30, mask_dropout=0.5,
                         same_latent=False, share_queries=True,
                         perform_sdsa=True, perform_injection=True,
                         downscale_rate=4, cache_cpu_offloading=False, story_pipeline_store=None):
@@ -127,21 +127,21 @@ def run_anchor_generation(story_pipeline, prompts, concept_token,
     
     last_masks = story_pipeline.attention_store.last_mask
 
-    # dift_features = unet.latent_store.dift_features['261_0'][batch_size:]
-    dift_features = unet.latent_store.dift_features['21_0'][batch_size:]
-    dift_features = torch.stack([gaussian_smooth(x, kernel_size=3, sigma=1) for x in dift_features], dim=0)
+    # # dift_features = unet.latent_store.dift_features['261_0'][batch_size:]
+    # dift_features = unet.latent_store.dift_features['265_0'][batch_size:]
+    # dift_features = torch.stack([gaussian_smooth(x, kernel_size=3, sigma=1) for x in dift_features], dim=0)
 
-    anchor_cache_first_stage.dift_cache = dift_features
-    anchor_cache_first_stage.anchors_last_mask = last_masks
+    # anchor_cache_first_stage.dift_cache = dift_features
+    # anchor_cache_first_stage.anchors_last_mask = last_masks
 
-    if cache_cpu_offloading:
-        anchor_cache_first_stage.to_device(torch.device('cpu'))
+    # if cache_cpu_offloading:
+    #     anchor_cache_first_stage.to_device(torch.device('cpu'))
 
-    nn_map, nn_distances = cyclic_nn_map(dift_features, last_masks, LATENT_RESOLUTIONS, device)
+    # nn_map, nn_distances = cyclic_nn_map(dift_features, last_masks, LATENT_RESOLUTIONS, device)
 
     if story_pipeline_store is not None:
-        story_pipeline_store.first_stage.nn_map.append({key: nn_map[key].cpu() for key in nn_map})
-        story_pipeline_store.first_stage.nn_distances.append({key: nn_distances[key].cpu() for key in nn_distances})
+        story_pipeline_store.first_stage.last_masks.append({key: last_masks[key].cpu() for key in last_masks})
+        # story_pipeline_store.first_stage.nn_distances.append({key: nn_distances[key].cpu() for key in nn_distances})
 
     torch.cuda.empty_cache()
     gc.collect()

@@ -79,10 +79,8 @@ class OneActorDataset(Dataset):
                 if os.path.splitext(file_path)[1] == '.jpg']
 
         base_data = []
-        for file_name in self.base_image_paths:
-            with open(f"{self.target_root}/base/{file_name}.pkl", 'rb') as f:
-                _base_data = pickle.load(f)
-                base_data.append({'h_mid': _base_data['h_mid'][-1:]})
+        with open(f"{self.target_root}/base/mid_list.pkl", 'rb') as f:
+            base_data = pickle.load(f)
 
         self.base_image_paths = [ os.path.join(f"{self.target_root}/base", f"{file_path}.jpg") for file_path in self.base_image_paths]
 
@@ -103,13 +101,12 @@ class OneActorDataset(Dataset):
 
 
         self.target_data = target_data
-        self.base_data = base_data
+        self.base_mid = base_data
         
         self.flip_transform = transforms.RandomHorizontalFlip(p=self.flip_p)    # randomly flip images
 
         self.h_mid = self.target_data['h_mid']
         self.prompt_embed = self.target_data['prompt_embed']
-        self.base_mid = [h['h_mid'][-1] for h in self.base_data]
         base_data_mean = torch.stack(self.base_mid)
         self.base_data_mean = base_data_mean.mean(dim=0)
 

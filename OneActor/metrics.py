@@ -17,72 +17,119 @@ import numpy as np
 from tqdm import tqdm
 
 from torchmetrics.multimodal.clip_score import CLIPScore
-import torch
+from torchmetrics.multimodal import CLIPScore
+from torchmetrics.text import CLIPTextSimilarity
+import clip
+
 import pandas as pd
 
-# from deepface import DeepFace
 
 ROOT = "/workspace/experiments"
 
-def main():
+
+def clip_i(model, image_1, image_2 ):
     
+    # Extract image embeddings
+    with torch.no_grad():
+        emb1 = model.encode_image(image1)
+        emb2 = model.encode_image(image2)
+    
+    # Normalize embeddings
+    emb1 /= emb1.norm(dim=-1, keepdim=True)
+    emb2 /= emb2.norm(dim=-1, keepdim=True)
+    
+    # Compute CLIP-I (Image-Image similarity)
+    clip_i_score = (emb1 @ emb2.T).item()
+    
+    return clip_i_score
+    
+
+def main():
+
+
+# # Image for evaluation
+# image = Image.open("generated_image.png")
+
+# # Prompts
+# prompt_1 = "A brave knight standing on a hill."
+# prompt_2 = "A fearless warrior overlooking a battlefield."
+
+# # CLIPScore (Text-Image)
+# clip_score = CLIPScore()
+# image_text_similarity = clip_score(image, prompt_2)
+# print(f"CLIPScore (Image ↔ Text): {image_text_similarity:.4f}")
+
+# # CLIP-T (Text-Text)
+# clip_t = CLIPTextSimilarity()
+# text_similarity = clip_t(prompt_1, prompt_2)
+# print(f"CLIP-T (Text ↔ Text): {text_similarity:.4f}")
+
+
     # get environment configs
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dir_name', type=str, required=True)
-    parser.add_argument('--train_id', type=str, required=True)
+    parser.add_argument('--prompt_path', type=str, default='/workspace/Diploma/config/prompt.yaml')
+    parser.add_argument('--exp_path', type=str, required=True)
+    parser.add_argument('--model_path', type=str, required=True)
+
+    with open(opt.prompt_path, "r") as f:
+        prompt = yaml.safe_load(f)
 
     args = parser.parse_args()
 
-    dir_name, train_id = args.dir_name, args.train_id
+    exp_path, model_path = args.exp_path, args.model_path
     
-    device = "cuda"
-    dreamsim_model, preprocess = dreamsim(pretrained=True, device=device)
-    clip_score_metric = CLIPScore(model_name_or_path="openai/clip-vit-base-patch16").to(device)
+    
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    
+    dreamsim_model, preprocess_ds = dreamsim(pretrained=True, device=device)
+    clip_score = CLIPScore(model_name_or_path="openai/clip-vit-base-patch16").to(device)
+    clip_t = CLIPTextSimilarity()
+    model_ci, preprocess_ci = clip.load("ViT-B/32", device)
 
-    file_target = f"{ROOT}/{dir_name}/{'target.jpg'if train_id == 'model_Mask' else 'oa_source.jpg'}"
+    file_target = f"{ROOT}/{exp_path}/{'target.jpg'}"
     img1 = Image.open(file_target)
-    img1 = np.array(img1.convert("RGB"))
-    img1 = torch.from_numpy(img1).permute(2, 0, 1).to(device)
 
-    for _, _, files in os.walk(f"{ROOT}/{dir_name}/{train_id}/inference"):
-        break
+    img1_ar = np.array(img1.convert("RGB"))
+    img1_ar = torch.from_numpy(img1_ar).permute(2, 0, 1).to(device)
 
-    files = [f for f in files if '.jpg' in f]
+    img1_prt = prompt['target_prompt']
 
-    results = {}
-    for n, file_name in tqdm(enumerate(files)):
-        results[file_name] = {}
+    img1_prep_ds = preprocess_ds(img1).to(device)
+    img1_prep_ci = preprocess_ds(img1).unsqueeze(0).to(device)
 
-    for n, _file_name in tqdm(enumerate(files)):
-        file_name = f"{ROOT}/{dir_name}/{train_id}/inference/{_file_name}"
-        img2 = Image.open(file_name)
-        img2 = np.array(img2.convert("RGB"))
-        img2 = torch.from_numpy(img2).permute(2, 0, 1).to(device)
-        clip_score = clip_score_metric(img1, img2)
-        results[_file_name]['CLIPScore'] = clip_score.detach().round().item()
+    results = []
+    for prt in prompt['add_prompts']:
+        file_name = prt.lower().replace(",","").replace(" ","_")
+        img2 = Image.open(f"{ROOT}/{exp_path}/{model_path}/inference/{file_name}.jpg")
+        img2_ar = np.array(img2.convert("RGB"))
+        img2_ar = torch.from_numpy(img2_ar).permute(2, 0, 1).to(device)
+        img2_prt = f"{prompt['target_prompt']} {prt}"
+
+        img2_prep_ds = preprocess_ds(img2).to(device)
+        img2_prep_ci = preprocess_ds(img2).unsqueeze(0).to(device)
     
-    img1 = preprocess(Image.open(file_target)).to(device)
-    for n, _file_name in tqdm(enumerate(files)):
-        file_name = f"{ROOT}/{dir_name}/{train_id}/inference/{_file_name}"
-        img2 = preprocess(Image.open(file_name)).to(device)
-        distance = dreamsim_model(img1, img2)
-        results[_file_name]['dreamsim'] = float(distance.cpu().detach().numpy()[0])
-
-    # for n, _file_name in tqdm(enumerate(files)):
-    #     try:
-    #         file_name = _file_name    
-    #         img2 = f"{ROOT}/{dir_name}/{train_id}/inference/{_file_name}"
-    #         distance = DeepFace.verify(img1_path=file_target, img2_path=img2, model="Facenet512")['distance']
-    #         results[_file_name]['DeepFace'] = distance
-    #     except:
-    #         print(_file_name)
-    #         results[_file_name]['DeepFace'] = 3
+        clip_score = clip_score(img1_ar, img2_ar)
+        ds_distance = dreamsim_model(img1_prep_ds, img2_prep_ds)
+        text_similarity = clip_t(img1_prt, img2_prt)
+        clip_i_score = clip_i(model_ci, img1_prep_ci, img2_prep_ci)
         
+        resultsresults.append({
+            "exp_path": exp_path,
+            "model_path": model_path,
+            "prompt_1": img1_prt,
+            "prompt_2": img2_prt,
+            "clip_score": clip_score,
+            "dreamsim_distance": ds_distance,
+            "clip_t_score": text_similarity,
+            "clip_i_score": clip_i_score,            
+        })
+                
     df = pd.DataFrame(results).T.reset_index()
-    aggres = aggres = df[['CLIPScore', 'dreamsim']].mean().values
-    print(f"🔥🔥🔥 {dir_name}/{train_id}:  {aggres}")
-    df.to_csv(f"{ROOT}/{dir_name}/{train_id}/metrics.csv", index=False)
+    print(df)
+    aggres = aggres = df[['clip_score', 'dreamsim', 'clip_t_score', 'clip_i_score']].mean().values
+    print(f"🔥🔥🔥 {exp_path}/{model_path}:  {aggres}")
+    df.to_csv(f"{ROOT}/{exp_path}/{model_path}/metrics.csv", index=False)
 
 if __name__ == '__main__':
     main()

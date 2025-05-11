@@ -18,15 +18,16 @@ else:
     xformers = None
 
 
+
 class StageStore:
     def __init__(self):
         self.prompt_embeds = []
         self.xt_save = []
         self.mid_save_list = []
         self.images = []
-        self.nn_map = []
-        self.nn_distances = []
+        self.last_masks = []
         self.prompt = []
+        # self.nn_distances = []
 
 class StoryPipelineStore:
     def __init__(self):
@@ -192,6 +193,7 @@ class QueryStore:
             new_query = query
 
         return new_query
+
 
 class DIFTLatentStore:
     def __init__(self, steps: List[int], up_ft_indices: List[int]):

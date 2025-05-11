@@ -92,14 +92,14 @@ def setup_logging():
 def main():
     
     # get environment configs
-    with open("/workspace/experiments/PATH.json","r") as f:
+    with open("/workspace/Diploma/PATH.json","r") as f:
         ENV_CONFIGS = json.load(f)
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config_path', type=str, default='/workspace/experiments/config/config.yaml')
-    parser.add_argument('--prompt_path', type=str, default='/workspace/experiments/config/prompt-girl.yaml')
-    parser.add_argument('--dir_name', type=str, required=True)
-    parser.add_argument('--model_dir', type=str, required=True)
+    parser.add_argument('--config_path', type=str, default='/workspace/Diploma/config/config.yaml')
+    parser.add_argument('--prompt_path', type=str, default='/workspace/Diploma/config/prompt-girl.yaml')
+    parser.add_argument('--exp_path', type=str, required=True)
+    parser.add_argument('--model_path', type=str, required=True)
     parser.add_argument('--mask_power', type=float, default=0.5)    
     args = parser.parse_args()
     
@@ -111,7 +111,7 @@ def main():
     device = config['device']
     setup_logging()
     
-    target_dir = config['experiments_dir']+'/'+args.dir_name
+    target_dir = config['experiments_dir']+'/'+args.exp_path
     
     accelerator = Accelerator(
         gradient_accumulation_steps=config.get("gradient_accumulation_steps", 1),
@@ -126,9 +126,9 @@ def main():
     
     # Handle the repository creation
     # now = datetime.now()
-    # train_id = now.strftime("%y%m%d%H%M")
-    # train_id = str(train_id)
-    output_dir = f"{target_dir}/{args.model_dir}"
+    # model_path = now.strftime("%y%m%d%H%M")
+    # model_path = str(model_path)
+    output_dir = f"{target_dir}/{args.model_path}"
     if accelerator.is_main_process:
         os.makedirs(output_dir, exist_ok=True)
         os.makedirs(f"{output_dir}/ckpt", exist_ok=True)
@@ -265,25 +265,25 @@ def main():
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
     logger.info(f"  Gradient Accumulation steps = {1}")
     logger.info(f"  Total optimization steps = {max_train_steps}")
-    logger.info(f"  ✅ dir_name = {args.dir_name}")
+    logger.info(f"  ✅ exp_path = {args.exp_path}")
     logger.info(f"  ✅ output_dir = {output_dir.split('/')[-1]}")
     logger.info(f"  ✅ use_mask = {use_mask}")
     logger.info(f"  mask_power = {mask_power if use_mask else 'NA'}")
 
-    with open(f"{output_dir}/log_train.log", 'w') as log_file:
+    with open(f"{output_dir}/log_train.yaml", 'w') as log_file:
         print(f"num_examples: {len(train_dataset)}", file=log_file)
         print(f"num_epochs: {config['num_epochs']}", file=log_file)
         print(f"dataset_len: {config['dataset_len']}", file=log_file)
         print(f"batch_size: {config['batch_size']}", file=log_file)
         print(f"total_batch_size: {total_batch_size}", file=log_file)
         print(f"max_train_steps: {max_train_steps}", file=log_file)
-        print(f"dir_name: '{args.dir_name}'", file=log_file)
+        print(f"exp_path: '{args.exp_path}'", file=log_file)
         print(f"output_dir: '{output_dir.split('/')[-1]}'", file=log_file)
         print(f"use_mask: {use_mask}", file=log_file)
         print(f"mask_power: {mask_power if use_mask else 'NA'}", file=log_file)
 
     run = init_wanddb(config={
-        "dir_name":args.dir_name,
+        "exp_path":args.exp_path,
         "model_id":f"{output_dir.split('/')[-1]}",
         "use_mask":use_mask,
         "mask_power":mask_power if use_mask else 'NA',
@@ -329,11 +329,6 @@ def main():
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
                 if use_mask:            
                     mask_latents = batch["mask_pixel_values"][0].to(dtype=weight_dtype)
-
-                    # noisy_mask_latents = \
-                    #     ((1 - alphas_cumprod[timesteps])**0.5).view(bsz, 1, 1, 1)
-                    # noisy_mask_latents = noisy_mask_latents \
-                    #         + ((alphas_cumprod[timesteps])**0.5).view(bsz, 1, 1, 1) * mask_latents
 
                     noisy_mask_latents = mask_latents
                     
@@ -441,7 +436,7 @@ def main():
                     loss_aver = F.mse_loss(model_pred[-1:].float(),
                                             target[-1:].float(), reduction="mean")
                     
-                loss = loss_target + config['lambda1'] * loss_base + config['lambda2'] * loss_aver    
+                loss = loss_target + config['lambda1_mask'] * loss_base + config['lambda2_mask'] * loss_aver    
                 avg_loss = accelerator.gather(loss.repeat(config['batch_size'])).mean()
                 train_loss += avg_loss.item()
 

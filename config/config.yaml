@@ -5,21 +5,25 @@ model_type: 'XL'
 size: 1024
 device: 'cuda'
 
-steps: 50
+steps: 30
 guidance_scale: 7.5
 g_seed: 1000
+gen_base: 10
+guidance_scale: 7.5
 
 # TUNE
 concept_type: 'character'  # CHANGE HERE, choose from 'character' 'object' 'style'
 t_seed: 1000
 lr: 0.0001
 neg_num: 3 # Auxiliary images used in a batch
-lambda1: 0.25
-lambda2: 0.1
+lambda1: 0.5
+lambda2: 0.2
+lambda1_mask: 0.5
+lambda2_mask: 0.2
 dataset_len: 100
 num_epochs: 1
 batch_size: 1 # FIX
-save_steps: 25
+save_steps: 100
 checkpointing_steps: 500
 resume_from_checkpoint: None  # True or None
 xt_to_use: -1
@@ -32,7 +36,6 @@ allow_tf32: True
 # INFERENCE
 
 seed: 1000
-inference_steps: 30
 only_step: [100]  # type in a specific step (Recommended) or set to 'best'
 
 v: 0.8 # semantic interpolation scales
