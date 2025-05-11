@@ -503,6 +503,8 @@ def main():
     accelerator.end_training()
     # Finish the run and upload any remaining data.
     run.finish()
+    
+    torch.cuda.empty_cache()
 
 
 if __name__ == "__main__":

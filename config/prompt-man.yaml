@@ -1,0 +1,17 @@
+target_prompt: 'a 50 years old man with curly hair, photo'
+base: 'man' # CHANGE HERE
+add_prompts: ['in the park',
+   'reading a book',
+   'cooking in the kitchen',
+   'at the beach',
+   'having an avacado',
+   'Wearing a light linen shirt and comfortable shorts',
+   'Smiling gently as the sunlight hits his face',
+   'Surrounded by lush green trees or vibrant beach scenery',
+   'Holding a pair of reading glasses in his hand',
+   'With a light breeze gently moving his curly hair',
+   'Sitting on a wooden bench or a sun lounger',
+   'With a serene, thoughtful expression',
+   'A coffee cup by his side',
+   'Sandals resting nearby in the sand or on the grass',
+   'A small bag or backpack beside him, partially open']

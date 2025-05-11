@@ -13,6 +13,8 @@ import yaml
 import os
 import shutil
 import numpy as np
+import torch.nn.functional as F
+
 
 def find_token_ids(tokenizer, prompt, words):
     tokens = tokenizer.encode(prompt)
@@ -87,33 +89,26 @@ if __name__ == '__main__':
 
 
     torch.cuda.empty_cache()
-    # random_settings = random.sample(settings, 4)
-    # prompts = [f'{subject} {setting}' for setting in random_settings]
-    # anchor_out_images, anchor_image_all, anchor_cache_first_stage = \
-    #     run_anchor_generation(story_pipeline, prompts, concept_token, 
-    #                    seed=random.randint(0, 10000), mask_dropout=mask_dropout, same_latent=same_latent,
-    #                    cache_cpu_offloading=True, story_pipeline_store=story_pipeline_store)
-
-    # torch.cuda.empty_cache()
-    # random_settings = random.sample(settings, 3)
-    # prompts = [f'{subject} {setting}' for setting in random_settings]
-    # anchor_out_images, anchor_image_all, anchor_cache_first_stage = \
-    #     run_anchor_generation(story_pipeline, prompts, concept_token, 
-    #                    seed=random.randint(0, 10000), mask_dropout=mask_dropout, same_latent=same_latent,
-    #                    cache_cpu_offloading=True, story_pipeline_store=story_pipeline_store)
-
-    torch.cuda.empty_cache()
    
     data_list = {}
     image_list = {}
+    kernel_size = 5
 
     n = 0
     for i in range(len(story_pipeline_store.first_stage.images)):
         n_samples = len(story_pipeline_store.first_stage.images[i])
         for j in range(n_samples):
             image_list[f"img_{n}"] = story_pipeline_store.first_stage.images[i][j]
-            mask = story_pipeline_store.first_stage.last_masks[i][64][j].reshape(64,64).cpu() * 0.75
-            mask += torch.ones(size=(64,64)) * 0.25                    
+            # mask = story_pipeline_store.first_stage.last_masks[i][64][j].reshape(64,64).cpu() * 0.75
+            # mask += torch.ones(size=(64,64)) * 0.25                    
+            mask = story_pipeline_store.first_stage.last_masks[i][64][j].reshape(64,64).cpu() * 1
+            mask = mask.to(dtype=torch.float32)
+            mask = mask.unsqueeze(0).unsqueeze(0)
+            kernel = torch.ones((1, 1, kernel_size, kernel_size), dtype=torch.float32) / (kernel_size * kernel_size)
+            padding = (kernel_size - 1) // 2
+            mask = F.conv2d(mask, kernel, padding=padding).squeeze()  # Remove the extra dimensions   
+            # Apply the final transformation
+            mask = mask * 0.6 + torch.ones(size=(64, 64)) * 0.25 + (mask > 0) * 0.15
             data_list[f"img_{n}"] = {
                 'xt':[_xt_save[j:j+1] for _xt_save in story_pipeline_store.first_stage.xt_save[i]],
                 'h_mid':[_mid_save[j::n_samples]  for _mid_save in story_pipeline_store.first_stage.mid_save_list[i]],
@@ -126,19 +121,9 @@ if __name__ == '__main__':
     
     keys_list = list(image_list.keys())
     target_key = keys_list[0]
-    base_keys = keys_list[1:]
     
     with open(f'{output_dir}/target_data.pkl', 'wb') as f:
         pickle.dump(data_list[target_key], f)
     image_list[target_key].save(f'{output_dir}/target.jpg')
 
-    # for key in base_keys:
-    #     with open(f'{output_dir}/base/{key}.pkl', 'wb') as f:
-    #         pickle.dump(data_list[key], f)
-    #         image_list[key].save(f"{output_dir}/base/{key}.jpg")
-            
-    # base_data = []
-    # for i in range(1, len(base_keys) + 1):
-    #     with open(f"{output_dir}/base/img_{str(i)}.pkl", 'rb') as f:
-    #         _base_data = pickle.load(f)
-    #         base_data.append(_base_data['h_mid'][-1])
+    torch.cuda.empty_cache()

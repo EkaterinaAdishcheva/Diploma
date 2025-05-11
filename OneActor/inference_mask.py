@@ -73,7 +73,7 @@ def main():
     device = config['device']
 
     neg_prompts = [''] * len(prompt['add_prompts'])
-    file_names = ["_".join(_prompt.lower().split(" ")) for _prompt in prompt['add_prompts']]
+    file_names = ["_".join(_prompt.lower().replace(",","").split(" ")) for _prompt in prompt['add_prompts']]
     # make dir and initialize
     tgt_dirs = []
     
@@ -154,5 +154,7 @@ def main():
             image = image.images[0]
             image.save(f"{out_root}/inference/{file_names[img_num]}_step_{str(steps)}.jpg")
 
+    torch.cuda.empty_cache()
+    
 if __name__ == '__main__':
     main()

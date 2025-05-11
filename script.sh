@@ -1,11 +1,19 @@
-python Diploma/OneActor/generate_data_target.py --prompt_path=Diploma/config/prompt-adventurer.yaml --exp_path="adventurer_1"
+echo $1 $2
 
-python Diploma/OneActor/generate_data_base.py --prompt_path=Diploma/config/prompt-adventurer.yaml --exp_path="adventurer_1"
+cd /workspace/
 
-python Diploma/OneActor/tune_mask.py --prompt_path=Diploma/config/prompt-adventurer.yaml --exp_path="adventurer_1" --model_path="Mask" 
+. oa_venv/bin/activate
+python Diploma/OneActor/generate_data_target.py --prompt_path=$1 --exp_path=$2
+python Diploma/OneActor/generate_data_base.py --prompt_path=$1 --exp_path=$2
+python Diploma/OneActor/tune_mask.py --prompt_path=$1 --exp_path=$2 --model_path="Mask" 
+python Diploma/OneActor/inference_mask.py --prompt_path=$1 --exp_path=$2 --model_path="Mask"
+python Diploma/OneActor/tune_oneactor.py --prompt_path=$1 --exp_path=$2 --model_path="OneActor"
+python Diploma/OneActor/inference_oneactor.py --prompt_path=$1 --exp_path=$2 --model_path="OneActor"
+deactivate oa_venv
 
-python Diploma/OneActor/inference_mask.py --prompt_path=Diploma/config/prompt-adventurer.yaml --exp_path="adventurer_1" --model_path="Mask"
- 
-python Diploma/OneActor/tune_oneactor.py --prompt_path=Diploma/config/prompt-adventurer.yaml --exp_path="adventurer_1" --model_path="OneActor"
+. ds/bin/activate
 
-python Diploma/OneActor/inference_oneactor.py --prompt_path=Diploma/config/prompt-adventurer.yaml --exp_path="adventurer_1" --model_path="OneActor"
+python dreamsim/metrics.py --prompt_path=$1 --exp_path=$2 --model_path="Mask" 
+python dreamsim/metrics.py --prompt_path=$1 --exp_path=$2 --model_path="OneActor"
+
+deactivate ds

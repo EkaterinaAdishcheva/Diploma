@@ -1,0 +1,17 @@
+target_prompt: 'a sophisticated gentleman in a toilored suit, charcoal sketch'
+base: 'gentleman' # CHANGE HERE
+add_prompts: ['a city as background',
+   'the Effel Tower as a background',
+   'the Statue of liberty as a background',
+   'eating a burger',
+   'wearing sunglasses',
+   'standing on a mountain peak',
+   'exploring an ancient temple',
+   'riding a motorcycle',
+   'in a jungle with wild animals',
+   'escaping from an explosion',
+   'running through a futuristic city',
+   'holding a treasure map',
+   'in a sandstorm with a scarf around his face',
+   'jumping between rooftops',
+   'posing heroically in front of a burning building']

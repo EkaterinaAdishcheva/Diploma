@@ -104,5 +104,7 @@ def main():
         image = image.images[0]
         image.save(out_root+'/inference'+f'/{_prompt.lower().replace(",","").replace(" ","_")}_step_{steps[-1]}.jpg')
 
+    torch.cuda.empty_cache()
+    
 if __name__ == '__main__':
     main()

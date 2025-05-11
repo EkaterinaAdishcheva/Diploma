@@ -677,6 +677,7 @@ def main():
    
     print(f'Best loss:{best_loss} @@@ Step:{best_step}')
     accelerator.end_training()
+    torch.cuda.empty_cache()
 
 
 if __name__ == "__main__":

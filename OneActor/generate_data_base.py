@@ -81,3 +81,5 @@ if __name__ == '__main__':
             mid_last_base.append(mid_[-1].cpu())
         with open(f"{output_dir}/base/mid_list.pkl", 'wb') as f:
             pickle.dump(mid_last_base, f)
+
+    torch.cuda.empty_cache()
