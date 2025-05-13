@@ -88,30 +88,18 @@ def setup_logging():
         level=logging.INFO,
     )
     
+
+def tune(exp_path, model_path, subject, concept_token, config=None, sdxl_path="stabilityai/stable-diffusion-xl-base-1.0"):
     
-def main():
-    
-    # get environment configs
-    with open("/workspace/Diploma/PATH.json","r") as f:
-        ENV_CONFIGS = json.load(f)
-    
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--config_path', type=str, default='/workspace/Diploma/config/config.yaml')
-    parser.add_argument('--prompt_path', type=str, default='/workspace/Diploma/config/prompt-girl.yaml')
-    parser.add_argument('--exp_path', type=str, required=True)
-    parser.add_argument('--model_path', type=str, required=True)
-    parser.add_argument('--mask_power', type=float, default=0.5)    
-    args = parser.parse_args()
-    
-    with open(args.config_path, "r") as f:
-        config = yaml.safe_load(f)
-    with open(args.prompt_path, "r") as f:
-        prompt = yaml.safe_load(f)
+    if config is None:
+        with open('/workspace/Diploma/config/config.yaml', "r") as f:
+            config = yaml.safe_load(f)
 
     device = config['device']
+    
     setup_logging()
     
-    target_dir = config['experiments_dir']+'/'+args.exp_path
+    target_dir = config['experiments_dir'] + '/' + exp_path
     
     accelerator = Accelerator(
         gradient_accumulation_steps=config.get("gradient_accumulation_steps", 1),
@@ -128,16 +116,16 @@ def main():
     # now = datetime.now()
     # model_path = now.strftime("%y%m%d%H%M")
     # model_path = str(model_path)
-    output_dir = f"{target_dir}/{args.model_path}"
+    output_dir = f"{target_dir}/{model_path}"
     if accelerator.is_main_process:
         os.makedirs(output_dir, exist_ok=True)
         os.makedirs(f"{output_dir}/ckpt", exist_ok=True)
         os.makedirs(f"{output_dir}/weight", exist_ok=True)
-        shutil.copyfile(args.config_path, f"{output_dir}/train_config.yaml")
-        shutil.copyfile(args.prompt_path, f"{output_dir}/train_prompt.yaml")
+        # shutil.copyfile(config_path, f"{output_dir}/train_config.yaml")
+        # shutil.copyfile(prompt_path, f"{output_dir}/train_prompt.yaml")
 
     # Load Models
-    pretrained_model_name_or_path = ENV_CONFIGS['paths']['sdxl_path']
+    pretrained_model_name_or_path = sdxl_path
     # Load the tokenizers
     tokenizer_one = AutoTokenizer.from_pretrained(
         pretrained_model_name_or_path,
@@ -201,12 +189,12 @@ def main():
         eps=1e-8,
     )
 
-    use_mask, mask_power = True, args.mask_power
-    mask_power = 'NA'
+    use_mask = True
+    
     # Dataset and DataLoaders creation:
     train_dataset = OneActorDataset(
         target_dir=target_dir,
-        config={**prompt, **config},
+        config={'exp_path': exp_path, 'model_path': model_path, 'base': concept_token[0], 'target_prompt': subject,  **config},
         use_mask=use_mask,
         set='train',
         repeats=config['dataset_len']
@@ -265,10 +253,9 @@ def main():
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
     logger.info(f"  Gradient Accumulation steps = {1}")
     logger.info(f"  Total optimization steps = {max_train_steps}")
-    logger.info(f"  ✅ exp_path = {args.exp_path}")
+    logger.info(f"  ✅ exp_path = {exp_path}")
     logger.info(f"  ✅ output_dir = {output_dir.split('/')[-1]}")
     logger.info(f"  ✅ use_mask = {use_mask}")
-    logger.info(f"  mask_power = {mask_power if use_mask else 'NA'}")
 
     with open(f"{output_dir}/log_train.yaml", 'w') as log_file:
         print(f"num_examples: {len(train_dataset)}", file=log_file)
@@ -277,19 +264,17 @@ def main():
         print(f"batch_size: {config['batch_size']}", file=log_file)
         print(f"total_batch_size: {total_batch_size}", file=log_file)
         print(f"max_train_steps: {max_train_steps}", file=log_file)
-        print(f"exp_path: '{args.exp_path}'", file=log_file)
+        print(f"exp_path: '{exp_path}'", file=log_file)
         print(f"output_dir: '{output_dir.split('/')[-1]}'", file=log_file)
         print(f"use_mask: {use_mask}", file=log_file)
-        print(f"mask_power: {mask_power if use_mask else 'NA'}", file=log_file)
 
-    run = init_wanddb(config={
-        "exp_path":args.exp_path,
-        "model_id":f"{output_dir.split('/')[-1]}",
-        "use_mask":use_mask,
-        "mask_power":mask_power if use_mask else 'NA',
-        "dataset_len":config['dataset_len'],
-        "num_epochs":config['num_epochs'],
-    })
+    # run = init_wanddb(config={
+    #     "exp_path":args.exp_path,
+    #     "model_id":f"{output_dir.split('/')[-1]}",
+    #     "use_mask":use_mask,
+    #     "dataset_len":config['dataset_len'],
+    #     "num_epochs":config['num_epochs'],
+    # })
     
     global_step = 0
     
@@ -444,7 +429,7 @@ def main():
                     diff = ((projector_res[step % ROLL_AVG]) ** 2).sum() ** 0.5
                 else:
                     diff = ((projector_res[step % ROLL_AVG] - projector_res[(step - 1 )% ROLL_AVG]) ** 2).sum() ** 0.5
-                run.log({"loss": loss, "diff": diff, "mean": projector_res.sum(axis=(0, 2))[0]})
+                # run.log({"loss": loss, "diff": diff, "mean": projector_res.sum(axis=(0, 2))[0]})
 
 
                 accelerator.backward(loss)
@@ -502,10 +487,33 @@ def main():
     print(f'Best loss:{best_loss} @@@ Step:{best_step}')
     accelerator.end_training()
     # Finish the run and upload any remaining data.
-    run.finish()
+    # run.finish()
     
     torch.cuda.empty_cache()
 
+def main():    
+    # get environment configs
+    with open("/workspace/Diploma/PATH.json","r") as f:
+        ENV_CONFIGS = json.load(f)
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config_path', type=str, default='/workspace/Diploma/config/config.yaml')
+    parser.add_argument('--prompt_path', type=str, default='/workspace/Diploma/config/prompt-girl.yaml')
+    parser.add_argument('--exp_path', type=str, required=True)
+    parser.add_argument('--model_path', type=str, required=True)
+    args = parser.parse_args()
+    
+    with open(args.config_path, "r") as f:
+        config = yaml.safe_load(f)
+    with open(args.prompt_path, "r") as f:
+        prompt = yaml.safe_load(f)
+
+    subject = prompt['target_prompt']
+    concept_token = [prompt['base']]
+    exp_path = args.exp_path
+    model_path = args.model_path
+    
+    tune(exp_path, model_path, subject, concept_token, config, ENV_CONFIGS["paths"]["sdxl_path"])
 
 if __name__ == "__main__":
     main()

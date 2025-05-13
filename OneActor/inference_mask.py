@@ -54,44 +54,30 @@ def pipeline_inference(pipeline, prompt, neg_prompt, config, oneactor_extra_conf
             num_inference_steps=config['steps'], guidance_scale=config['eta_1'], \
             generator=generator, oneactor_extra_config=oneactor_extra_config)
 
-def main():
-    with open("/workspace/Diploma/PATH.json","r") as f:
-        ENV_CONFIGS = json.load(f)
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--config_path', type=str, default='/workspace/Diploma/config/config.yaml')
-    parser.add_argument('--prompt_path', type=str, default='/workspace/Diploma/config/prompt-girl.yaml')
-    parser.add_argument('--exp_path', type=str, required=True)
-    parser.add_argument('--model_path', type=str, required=True)
-
-    args = parser.parse_args()
-    
-    with open(args.config_path, "r") as f:
-        config = yaml.safe_load(f)
-    with open(args.prompt_path, "r") as f:
-        prompt = yaml.safe_load(f)
+def inference(exp_path, model_path, subject, concept_token, add_prompts, config=None, sdxl_path="stabilityai/stable-diffusion-xl-base-1.0"):
+    if config is None:
+        with open('/workspace/Diploma/config/config.yaml', "r") as f:
+            config = yaml.safe_load(f)
 
     device = config['device']
 
-    neg_prompts = [''] * len(prompt['add_prompts'])
-    file_names = ["_".join(_prompt.lower().replace(",","").split(" ")) for _prompt in prompt['add_prompts']]
+    neg_prompts = [''] * len(add_prompts)
+    file_names = ["_".join(_prompt.lower().replace(",","").split(" ")) for _prompt in add_prompts]
     # make dir and initialize
     tgt_dirs = []
     
-    target_dir = config['experiments_dir']+'/'+args.exp_path
+    target_dir = config['experiments_dir']+'/'+exp_path
 
-    model_path = args.model_path
 
     out_root = target_dir + f"/{model_path}" 
     
     os.makedirs(f"{out_root}/inference", exist_ok=True)
-    shutil.copyfile(args.config_path, f"{out_root}/inference/inference_config.yaml")
-    shutil.copyfile(args.prompt_path, f"{out_root}/inference/inference_prompt.yaml")
 
     print(f"Save inference to {out_root}/inference")
     
 
     # load sd pipeline
-    pipeline = DiffusionPipeline.from_pretrained(ENV_CONFIGS['paths']['sdxl_path']).to(config['device'])
+    pipeline = DiffusionPipeline.from_pretrained(sdxl_path).to(config['device'])
     pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
 
     # load cluster information
@@ -119,12 +105,12 @@ def main():
 
     
     # iterate over image list
-    for img_num in range(len(prompt['add_prompts'])):
-        _str = f"{prompt['target_prompt']} {prompt['add_prompts'][img_num]}"
+    for img_num in range(len(add_prompts)):
+        _str = f"{subject} {add_prompts[img_num]}"
         print(f"Generating prompt {_str}...")
 
         # locate the base token id
-        token_id = find_token_ids(pipeline.tokenizer, _str, [prompt['base']])
+        token_id = find_token_ids(pipeline.tokenizer, _str, concept_token)
         generator = torch.manual_seed(config['seed'])
 
         steps_list = config['only_step']
@@ -155,6 +141,30 @@ def main():
             image.save(f"{out_root}/inference/{file_names[img_num]}_step_{str(steps)}.jpg")
 
     torch.cuda.empty_cache()
+
+
+def main():
+    with open("/workspace/Diploma/PATH.json","r") as f:
+        ENV_CONFIGS = json.load(f)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config_path', type=str, default='/workspace/Diploma/config/config.yaml')
+    parser.add_argument('--prompt_path', type=str, default='/workspace/Diploma/config/prompt-girl.yaml')
+    parser.add_argument('--exp_path', type=str, required=True)
+    parser.add_argument('--model_path', type=str, required=True)
+
+    args = parser.parse_args()
     
+    with open(args.config_path, "r") as f:
+        config = yaml.safe_load(f)
+    with open(args.prompt_path, "r") as f:
+        prompt = yaml.safe_load(f)
+
+    subject = prompt['target_prompt']
+    concept_token = [prompt['base']]
+    add_prompts = prompt['add_prompts']
+    exp_path = args.exp_path
+    model_path = args.model_path
+    inference(exp_path, model_path, subject, concept_token, add_prompts, config, ENV_CONFIGS["paths"]["sdxl_path"])
+
 if __name__ == '__main__':
     main()

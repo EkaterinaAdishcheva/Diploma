@@ -17,56 +17,43 @@ import torch.nn.functional as F
 
 
 def find_token_ids(tokenizer, prompt, words):
+    print(prompt, words)
     tokens = tokenizer.encode(prompt)
     ids = []
     if isinstance(words, str):
                   words = [words]
     for word in words:
+        word = word.lower()
         for i, token in enumerate(tokens):
             if tokenizer.decode(token) == word:
                 ids.append(i)
                 break
     assert len(ids) != 0 , 'Cannot find the word in the prompt.'
     return ids
+
+def generate_target(exp_path, subject, concept_token, config=None, mask_dropout=0.5, same_latent=False):
     
-if __name__ == '__main__':
-
-    # get user configs
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--config_path', type=str, default='/workspace/Diploma/config/config.yaml')
-    parser.add_argument('--prompt_path', type=str, default='/workspace/Diploma/config/prompt.yaml')
-    parser.add_argument('--exp_path', type=str, required=True)
-    opt = parser.parse_args()
-    with open(opt.config_path, "r") as f:
-        config = yaml.safe_load(f)
-    with open(opt.prompt_path, "r") as f:
-        prompt = yaml.safe_load(f)
-
-    subject = prompt['target_prompt']
-    concept_token = [prompt['base']]
-    settings = [""] * 10
-    # if 'g_seed' not in list(config.keys()):
-    #     seed = random.randint(0, 10000)
-    # else:
-    #     seed = config['g_seed']
+    if config is None:
+        with open('/workspace/Diploma/config/config.yaml', "r") as f:
+            config = yaml.safe_load(f)
+    
     seed = random.randint(0, 10000)
-    mask_dropout = 0.5
-    same_latent = False
-    prompt['g_seed'] = seed
+
+    subject = subject.lower() 
+    concept_token[0] = concept_token[0].lower() 
 
     os.makedirs(config['experiments_dir'], exist_ok=True)
     now = datetime.now()
 
-    if os.path.isdir(f"{config['experiments_dir']}/{opt.exp_path}"):
-        print(f"💥 The directory {config['experiments_dir']}/{opt.exp_path} is already exist")
-        output_dir = f"{config['experiments_dir']}/{opt.exp_path}"   
-    else:
-        output_dir = f"{config['experiments_dir']}/{opt.exp_path}"
+    if os.path.isdir(f"{config['experiments_dir']}/{exp_path}"):
+        print(f"💥 The directory {config['experiments_dir']}/{exp_path} is already exist")
+    
+    output_dir = f"{config['experiments_dir']}/{exp_path}"
     print(f"✅ Save images to {output_dir}")
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(f"{output_dir}/base", exist_ok=True)
     with open(f"{output_dir}/gen_prompt.yaml", 'w') as outfile:
-        yaml.dump(prompt, outfile, default_flow_style=False)
+        yaml.dump({'exp_path': exp_path, 'subject': subject, 'concept_token': concept_token[0], 'seed':seed, **config}, outfile, default_flow_style=False)
     shutil.copyfile("/workspace/Diploma/OneActor/notebooks/show_images.ipynb", f"{output_dir}/show_images.ipynb")
     shutil.copyfile("/workspace/Diploma/OneActor/notebooks/reconciliation.ipynb", f"{output_dir}/reconciliation.ipynb")
 
@@ -79,9 +66,7 @@ if __name__ == '__main__':
     # Reset the GPU memory tracking
     torch.cuda.reset_max_memory_allocated(gpu)
 
-    
-    random_settings = random.sample(settings, 2)
-    prompts = [f'{subject} {setting}' for setting in random_settings]
+    prompts = [f'{subject}'] * 2
     anchor_out_images, anchor_image_all, anchor_cache_first_stage = \
             run_anchor_generation(story_pipeline, prompts, concept_token, 
                            seed=seed, mask_dropout=mask_dropout, same_latent=same_latent,
@@ -99,8 +84,6 @@ if __name__ == '__main__':
         n_samples = len(story_pipeline_store.first_stage.images[i])
         for j in range(n_samples):
             image_list[f"img_{n}"] = story_pipeline_store.first_stage.images[i][j]
-            # mask = story_pipeline_store.first_stage.last_masks[i][64][j].reshape(64,64).cpu() * 0.75
-            # mask += torch.ones(size=(64,64)) * 0.25                    
             mask = story_pipeline_store.first_stage.last_masks[i][64][j].reshape(64,64).cpu() * 1
             mask = mask.to(dtype=torch.float32)
             mask = mask.unsqueeze(0).unsqueeze(0)
@@ -127,3 +110,21 @@ if __name__ == '__main__':
     image_list[target_key].save(f'{output_dir}/target.jpg')
 
     torch.cuda.empty_cache()
+
+
+if __name__ == '__main__':
+    # get user configs
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config_path', type=str, default='/workspace/Diploma/config/config.yaml')
+    parser.add_argument('--prompt_path', type=str, default='/workspace/Diploma/config/prompt.yaml')
+    parser.add_argument('--exp_path', type=str, required=True)
+    opt = parser.parse_args()
+    with open(opt.config_path, "r") as f:
+        config = yaml.safe_load(f)
+    with open(opt.prompt_path, "r") as f:
+        prompt = yaml.safe_load(f)
+
+    subject = prompt['target_prompt']
+    concept_token = [prompt['base']]
+    exp_path = opt.exp_path
+    generate_target(exp_path, subject, concept_token, config)
