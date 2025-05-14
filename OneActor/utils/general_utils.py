@@ -5,18 +5,14 @@
 
 from typing import List, Dict
 import torch
-
-import sys 
-sys.path.append(".")
-sys.path.append("..")
-
 import numpy as np
 from typing import List
-from diffusers.utils.torch_utils import randn_tensor
 import torch.nn.functional as F
 from skimage import filters
-
 from tqdm import tqdm
+
+from OneActor.oa_diffusers.utils.torch_utils import randn_tensor
+
 
 ## Attention Utils
 def get_dynamic_threshold(tensor):

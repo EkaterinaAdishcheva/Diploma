@@ -4,15 +4,16 @@
 # located at the root directory.
 
 import torch
-from diffusers import DDIMScheduler
-from consistory_unet_sdxl import ConsistorySDXLUNet2DConditionModel
-from consistory_pipeline import ConsistoryExtendAttnSDXLPipeline
-from consistory_utils import FeatureInjector, AnchorCache, StoryPipelineStore
-from utils.general_utils import *
-
 import gc
 
-from utils.ptp_utils import view_images
+from OneActor.oa_diffusers import DDIMScheduler
+from OneActor.consistory_unet_sdxl import ConsistorySDXLUNet2DConditionModel
+from OneActor.consistory_pipeline import ConsistoryExtendAttnSDXLPipeline
+from OneActor.consistory_utils import FeatureInjector, AnchorCache, StoryPipelineStore
+from OneActor.utils.general_utils import *
+
+
+from OneActor.utils.ptp_utils import view_images
 
 LATENT_RESOLUTIONS = [32, 64]
 

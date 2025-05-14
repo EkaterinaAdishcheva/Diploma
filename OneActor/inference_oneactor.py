@@ -2,12 +2,12 @@ import os
 import pickle
 import torch
 import sys
-sys.path.append('./diffusers')
-from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
 import yaml
 import argparse
 import shutil
 import json
+
+from OneActor.oa_diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
 
 def load_pickle(path):
     with open(path, 'rb') as f:

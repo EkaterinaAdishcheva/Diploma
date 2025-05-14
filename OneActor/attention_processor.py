@@ -17,12 +17,12 @@
 # are not a contribution and subject to the license under the LICENSE file located at the root directory.
 
 
-from diffusers.utils import USE_PEFT_BACKEND
 from typing import Callable, Optional
 import torch
-from diffusers.models.attention_processor import Attention
 
-from consistory_utils import AnchorCache, FeatureInjector, QueryStore, xformers
+from OneActor.oa_diffusers.utils import USE_PEFT_BACKEND
+from OneActor.oa_diffusers.models.attention_processor import Attention
+from OneActor.consistory_utils import AnchorCache, FeatureInjector, QueryStore, xformers
 
 
 class ConsistoryAttnStoreProcessor:

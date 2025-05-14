@@ -1,7 +1,5 @@
 import torch
 import gc
-from consistory_run import load_pipeline, run_anchor_generation
-from consistory_utils import StoryPipelineStore
 import random
 from matplotlib import pyplot as plt
 import pickle
@@ -15,6 +13,8 @@ import shutil
 import numpy as np
 import torch.nn.functional as F
 
+from OneActor.consistory_run import load_pipeline, run_anchor_generation
+from OneActor.consistory_utils import StoryPipelineStore
 
 def find_token_ids(tokenizer, prompt, words):
     print(prompt, words)

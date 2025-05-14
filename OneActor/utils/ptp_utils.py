@@ -58,9 +58,9 @@ import numpy as np
 from typing import Union, List
 from PIL import Image
 from IPython.display import display
-
-from utils.general_utils import attn_map_to_binary
 import torch.nn.functional as F
+
+from .general_utils import attn_map_to_binary
 
 def view_images(images: Union[np.ndarray, List],
                 num_rows: int = 1,

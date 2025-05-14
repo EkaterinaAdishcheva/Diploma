@@ -7,6 +7,7 @@ import shutil
 import yaml
 import json
 from datetime import datetime
+import pickle
 
 import torch
 import torch.nn.functional as F
@@ -26,16 +27,15 @@ from transformers import AutoTokenizer, PretrainedConfig
 
 import wandb
 
-import diffusers
-from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
-from diffusers.optimization import get_scheduler
-from diffusers.utils import check_min_version, is_wandb_available
-from diffusers.utils.import_utils import is_xformers_available
+import OneActor.oa_diffusers
+from OneActor.oa_diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
+from OneActor.oa_diffusers.optimization import get_scheduler
+from OneActor.oa_diffusers.utils import check_min_version, is_wandb_available
+from OneActor.oa_diffusers.utils.import_utils import is_xformers_available
 
-from dataset import OneActorDataset
+from OneActor.dataset import OneActorDataset
 
-import pickle
-from projector import Projector
+from OneActor.projector import Projector
 
 torch.autograd.set_detect_anomaly(True)
 

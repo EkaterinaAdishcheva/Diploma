@@ -6,11 +6,14 @@ from threading import Thread
 import logging
 from aiogram import Bot, Dispatcher
 from aiogram import F as aif
+import json
 
 from aiogram.dispatcher.router import Router
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
-from aiogram.types import Message, ReplyKeyboardRemove, FSInputFile
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton
+from aiogram.types import Message, ReplyKeyboardRemove, FSInputFile, CallbackQuery, ReplyKeyboardMarkup
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.formatting import Text
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import Message
@@ -23,10 +26,10 @@ import uuid
 API_TOKEN = '7552786080:AAEiKMsAUkoV3U84w02e9ZHLHxtK9pGqvuI'
 
 
-from generate_data_target import generate_target
-from generate_data_base import generate_base
-from tune_mask import tune
-from inference_mask import inference
+from OneActor.generate_data_target import generate_target
+from OneActor.generate_data_base import generate_base
+from OneActor.tune_mask import tune
+from OneActor.inference_mask import inference
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
@@ -44,8 +47,6 @@ HELP_MESSAGE = """
     /new_character – create new character
     /new_illustration – create new illustration
     /show_characters – show all previously created characters
-    /history – message history
-    /show_image – show sample image
 """
 
 SMALL_HELP_MESSAGE = """
@@ -67,14 +68,22 @@ class CharacterStore:
         self.base_concept = base_concept.lower()
         self.subject = None
         self.target_image_path = None
+        self.base_all_image_path = None
         self.exp_path = None
         self.model_path = None
-
+        
+    def make_json(self):
+        res = {}
+        for attribute, value in self.__dict__.items():
+            res[attribute] = value
+        return res
+    
 class UserState:
     def __init__(self):
         self.state = None
         self.character = None
         self.user_messages = []
+
 
 
 def get_name_from_message(message: Message) -> str:
@@ -89,6 +98,21 @@ def get_name_from_message(message: Message) -> str:
     if res == "":
         res = f"user_id: {message.chat.id}"
     return res
+
+def save_characters():
+    res = {"characters": [crt.make_json() for crt in characters]}
+    with open("/workspace/experiments/characters.json", "w") as f:
+        json.dump(res, f, ensure_ascii=False)
+
+def load_caracters():
+    with open("/workspace/experiments/characters.json", "r") as f:
+        res = json.load(f)
+    for r in res['characters']:
+        characters.append(CharacterStore(r["base_concept"]))
+        for attribute, value in characters[-1].__dict__.items():
+            setattr(characters[-1], attribute, r[attribute])        
+    print(characters)
+    
 
 
 @router.message(aif.text, Command("start"))
@@ -120,6 +144,48 @@ async def send_new_character(message: Message) -> None:
     users_state[user_id].character = None
 
 
+@router.message(aif.text, Command("show_characters"))
+async def send_show_characters(message: Message) -> None:
+    user_id = message.from_user.id
+    logger.info(f"User {user_id} command show_characters")
+
+
+    if user_id not in users_state:
+        users_state[user_id] = UserState()
+
+    users_state[user_id].state = UNDEFINED
+    
+    created_characters = [crt for crt in characters if crt.model_path is not None]
+    if len(created_characters) == 0:
+        await message.reply(
+            "No character is created yet\nLet's create a new character"
+        )
+        await send_new_character(message)
+    else:
+        if len(created_characters) == 1:
+            await message.reply(
+                f"{len(created_characters)} character is created. Here it is:"
+            )
+        else:
+            await message.reply(
+                f"{len(created_characters)} characters are created. Here they are:"
+            )
+        for crt in created_characters:
+            await show_image(crt.target_image_path, crt.subject, message)
+        keyboard_buttons = []
+        for crt in created_characters:
+            keyboard_buttons.append(KeyboardButton(text=crt.base_concept))
+        keyboard_buttons.append(KeyboardButton(text="new character"))
+        
+        
+        keyboard = ReplyKeyboardMarkup(
+            keyboard=[keyboard_buttons],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
+        await message.answer("Choose character", reply_markup=keyboard)
+
+
 @router.message(aif.text, Command("new_illustration"))
 async def send_new_illustration(message: Message) -> None:
     user_id = message.from_user.id
@@ -130,63 +196,25 @@ async def send_new_illustration(message: Message) -> None:
         await message.reply(
             "You need to define your character first\n"
         )
-        await send_new_character(message)
+        await send_show_characters(message)
         return
 
+    users_state[user_id].state = NEW_ILLUSTRATION
     await message.reply(
             "Describe what should be shown on the illustration\n"
         )    
-    users_state[user_id].state = NEW_ILLUSTRATION
 
 
-async def show_image(image_path, base_concept, message: Message):
+async def show_image(image_path, description, message: Message):
     if not os.path.exists(image_path):
         await message.reply(f"🚫 File '{image_path}' not found.")
         return
         
     # Sending the image
     photo = FSInputFile(image_path)
-    await bot.send_photo(message.chat.id, photo, caption=f"Here is an image of {base_concept}")
+    await bot.send_photo(message.chat.id, photo, caption=description)
 
 
-async def display(crt, message: Message):
-    await show_image(crt.image_path, crt.base_concept, message)
-
-
-@router.message(aif.text, Command("show_characters"))
-async def send_show_characters(message: Message) -> None:
-    user_id = message.from_user.id
-    logger.info(f"User {user_id} command show_characters")
-
-    if user_id not in users_state:
-        users_state[user_id] = UserState()
-
-    created_characters = [crt for crt in characters if crt.image_path is not None]
-    if len(created_characters) == 0:
-        await message.reply(
-            "No character is created jet\nLet's create new character"
-        )
-        await send_new_character(message)
-    else:
-        await message.reply(
-            f"{len(created_characters)} characters are created. Here are they:"
-        )        
-        for crt in characters:
-            if crt.image_path is not None:
-                await display(crt, message)
-        await send_small_help(message)
-
-
-
-async def wait_for_file(file_path, check_interval=2, timeout=5):
-    logger.info(f"Wait for file  {file_path}")
-
-    start_time = asyncio.get_event_loop().time()
-    while not os.path.exists(file_path):
-        if asyncio.get_event_loop().time() - start_time > timeout:
-            return False
-        await asyncio.sleep(check_interval)
-    return True
 
 
 @router.message(aif.text)
@@ -202,25 +230,37 @@ async def processing_messages(message: Message):
     users_state[user_id].user_messages.append(user_message)
                 
     if users_state[user_id].state == NEW_ILLUSTRATION:
-        await message.reply(f"""Creating new illustration:
-                            {user_message}
-                            Wait, it can take up to 60 seconds\n""")
 
         exp_path = characters[users_state[user_id].character].exp_path
         model_path = characters[users_state[user_id].character].model_path
         base_concept = characters[users_state[user_id].character].base_concept
+        subject = characters[users_state[user_id].character].subject
         
+        await message.reply(
+            f"Creating an illustration:\n"
+            f"{user_message} for character {subject}\n"
+            f"Wait, it can take up to 60 seconds\n")
 
         inference(
-            exp_path, model_path,
-            characters[users_state[user_id].character].subject,
-            base_concept, [user_message])
+            exp_path, model_path, subject, base_concept, [user_message])
         file_name = "_".join(user_message.lower().replace(",","").split(" "))
         image_path = f"/workspace/experiments/{exp_path}/{model_path}/inference/{file_name}_step_100.jpg"
         
         logger.info(f"file is created {file_name}")
         await show_image(image_path, base_concept, message)
         users_state[user_id].state = UNDEFINED
+
+        keyboard_buttons = []
+        keyboard_buttons.append(KeyboardButton(text="new illustration"))        
+        keyboard_buttons.append(KeyboardButton(text="change character"))        
+        keyboard_buttons.append(KeyboardButton(text="new character"))        
+        keyboard = ReplyKeyboardMarkup(
+            keyboard=[keyboard_buttons],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
+        await message.answer("Choose action", reply_markup=keyboard)
+        
     
         return
 
@@ -242,8 +282,8 @@ async def processing_messages(message: Message):
         characters[users_state[user_id].character].subject = user_message
         
         await message.reply(
-            "Character image is creating\n"
-            "Wait, it can take up to 60 seconds\n"
+            f"Image for character\n{characters[users_state[user_id].character].subject}\nis creating...\n"
+            f"Wait, it can take up to 60 seconds\n"
         )
         
         id = str(uuid.uuid4())[:6]
@@ -255,29 +295,76 @@ async def processing_messages(message: Message):
         generate_target(exp_path, subject, concept_token)
 
         image_path = f"/workspace/experiments/{exp_path}/target.jpg"
-        characters[users_state[user_id].character].image_path = image_path      
+        characters[users_state[user_id].character].target_image_path = image_path      
         logger.info(f"target image is created, {exp_path}")
         
-        await display(characters[users_state[user_id].character], message)
+        await show_image(
+            image_path, f"{subject}\nthe image of the main character",
+            message)
         await message.reply(
             "Additional images are created...\n"
             "Wait, it can take up to 3 min\n"
         )
+        
         generate_base(exp_path, subject, concept_token)        
+        image_path = f"/workspace/experiments/{exp_path}/base_all.jpg"
+        characters[users_state[user_id].character].base_all_image_path = image_path      
+        await show_image(
+            image_path, f"{subject}\nthe additional images for the model",
+        message)
         logger.info(f"base images are created, {exp_path}")
 
  
+        await message.reply(
+            "Model is tunning...\n"
+            "Wait, it can take up to 7 min\n"
+        )
+        
         tune(exp_path, 'model_Mask', subject, concept_token)
+        
+        logger.info(f"model is tuned, {exp_path}")
         characters[users_state[user_id].character].model_path = 'model_Mask'
+
+        save_characters()
+        
         users_state[user_id].state = UNDEFINED
         await send_small_help(message)
         return            
 
+    message_is_base_concept = False
+    for n, crt in enumerate(characters):
+        if message.text == crt.base_concept:
+            message_is_base_concept = True
+            users_state[user_id].character = n
+            logger.info(f"User {user_id} chose character {n}.")
+            break
+ 
+    if message_is_base_concept:
+        users_state[user_id].state = NEW_ILLUSTRATION
+        await message.reply(
+            f"Character {message.text} is selected\n"
+            "Describe what should be shown on the illustration\n"
+        )
+        return            
+        
+    if message.text == "new illustration":
+        await send_new_illustration(message)
+        return
+    if message.text == "change character":
+        await send_show_characters(message)
+        return
+    if message.text == "new character":
+        await send_new_character(message)
+        return
     logger.info(f"User {user_id} state is {users_state[user_id].state} and can't be processed.")
-                
+    await send_small_help(message)       
+    return            
+    
                 
 
 async def main() -> None:
+    load_caracters()
+    
     dp.include_router(router)
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)

@@ -10,7 +10,11 @@ import logging
 import yaml
 import os
 import shutil
-from diffusers import DiffusionPipeline
+import numpy as np
+
+from OneActor.oa_diffusers import DiffusionPipeline
+
+from OneActor.utils.ptp_utils import view_images
 
 def generate_base(exp_path, subject, concept_token, config=None, sdxl_path="stabilityai/stable-diffusion-xl-base-1.0"):
     if config is None:
@@ -40,21 +44,28 @@ def generate_base(exp_path, subject, concept_token, config=None, sdxl_path="stab
     guidance_scale = config['guidance_scale']
     generator = torch.manual_seed(config['g_seed'])
     prompt_str = subject
+
+    num_base = config['gen_base']
+    all_images = []
     
-    if config['gen_base'] > 0:
-        num_base = config['gen_base']
+    if num_base > 0:
         mid_last_base = []
         for i in range(num_base):
             image, xt_list_, prompt_embeds, mid_ = pipeline(prompt_str, neg_prompt="",
                                                             num_inference_steps=steps, guidance_scale=guidance_scale, generator=generator,
                                                             oneactor_save=True)
             image = image.images[0]
+            all_images.append(np.array(image))
             image.save(f"{output_dir}/base/base{i}.jpg")
             mid_last_base.append(mid_[-1].cpu())
         with open(f"{output_dir}/base/mid_list.pkl", 'wb') as f:
             pickle.dump(mid_last_base, f)
+        
+        img_view = view_images(all_images, num_rows=num_base//3+1, downscale_rate=4)
+        img_view.save(f"{output_dir}/base_all.jpg")
 
     torch.cuda.empty_cache()
+
     
 if __name__ == '__main__':
 

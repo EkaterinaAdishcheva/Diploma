@@ -17,20 +17,21 @@
 # are not a contribution and subject to the license under the LICENSE file located at the root directory.
 
 import torch
-from diffusers.pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
-from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl import StableDiffusionXLPipeline, \
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
+from OneActor.oa_diffusers.pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
+from OneActor.oa_diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl import StableDiffusionXLPipeline, \
     rescale_noise_cfg, EXAMPLE_DOC_STRING
-from diffusers.utils import (
+from OneActor.oa_diffusers.utils import (
     deprecate,
     is_torch_xla_available,
     logging,
     replace_example_docstring,
 )
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from attention_processor import register_extended_self_attn
-from consistory_utils import FeatureInjector, AnchorCache, QueryStore
-from utils.ptp_utils import AttentionStore
+from OneActor.attention_processor import register_extended_self_attn
+from OneActor.consistory_utils import FeatureInjector, AnchorCache, QueryStore
+from OneActor.utils.ptp_utils import AttentionStore
 
 if is_torch_xla_available():
     # import torch_xla.core.xla_model as xm

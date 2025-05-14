@@ -24,18 +24,18 @@ import torch
 import torch.nn as nn
 import torch.utils.checkpoint
 
-from diffusers.configuration_utils import ConfigMixin, register_to_config
-from diffusers.loaders import UNet2DConditionLoadersMixin
-from diffusers.utils import USE_PEFT_BACKEND, BaseOutput, deprecate, logging, scale_lora_layers, unscale_lora_layers
-from diffusers.models.activations import get_activation
-from diffusers.models.attention_processor import (
+from OneActor.oa_diffusers.configuration_utils import ConfigMixin, register_to_config
+from OneActor.oa_diffusers.loaders import UNet2DConditionLoadersMixin
+from OneActor.oa_diffusers.utils import USE_PEFT_BACKEND, BaseOutput, deprecate, logging, scale_lora_layers, unscale_lora_layers
+from OneActor.oa_diffusers.models.activations import get_activation
+from OneActor.oa_diffusers.models.attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
     AttentionProcessor,
     AttnAddedKVProcessor,
     AttnProcessor,
 )
-from diffusers.models.embeddings import (
+from OneActor.oa_diffusers.models.embeddings import (
     GaussianFourierProjection,
     ImageHintTimeEmbedding,
     ImageProjection,
@@ -47,8 +47,8 @@ from diffusers.models.embeddings import (
     TimestepEmbedding,
     Timesteps,
 )
-from diffusers.models.modeling_utils import ModelMixin
-from diffusers.models.unet_2d_blocks import (
+from OneActor.oa_diffusers.models.modeling_utils import ModelMixin
+from OneActor.oa_diffusers.models.unet_2d_blocks import (
     UNetMidBlock2D,
     UNetMidBlock2DCrossAttn,
     UNetMidBlock2DSimpleCrossAttn,
@@ -56,7 +56,7 @@ from diffusers.models.unet_2d_blocks import (
     get_up_block,
 )
 
-from consistory_utils import DIFTLatentStore
+from OneActor.consistory_utils import DIFTLatentStore
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 

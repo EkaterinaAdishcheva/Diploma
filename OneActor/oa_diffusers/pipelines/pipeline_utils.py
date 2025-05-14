@@ -40,11 +40,13 @@ from packaging import version
 from requests.exceptions import HTTPError
 from tqdm.auto import tqdm
 
-from .. import __version__
-from ..configuration_utils import ConfigMixin
-from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
-from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
-from ..utils import (
+
+import OneActor.oa_diffusers 
+from OneActor.oa_diffusers import __version__
+from OneActor.oa_diffusers.configuration_utils import ConfigMixin
+from OneActor.oa_diffusers.models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
+from OneActor.oa_diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
+from OneActor.oa_diffusers.utils import (
     CONFIG_NAME,
     DEPRECATED_REVISION_ARGS,
     SAFETENSORS_WEIGHTS_NAME,
@@ -60,8 +62,7 @@ from ..utils import (
     logging,
     numpy_to_pil,
 )
-from ..utils.torch_utils import is_compiled_module
-
+from OneActor.oa_diffusers.utils.torch_utils import is_compiled_module
 
 if is_transformers_available():
     import transformers
@@ -72,14 +73,20 @@ if is_transformers_available():
 
 from ..utils import FLAX_WEIGHTS_NAME, ONNX_EXTERNAL_WEIGHTS_NAME, ONNX_WEIGHTS_NAME, PushToHubMixin
 
-
 if is_accelerate_available():
     import accelerate
 
+try:
+    import OneActor.oa_diffusers as local_diffusers
+    sys.modules["diffusers"] = local_diffusers
+except ImportError as e:
+    raise ImportError("Не удалось импортировать локальный diffusers: OneActor.oa_diffusers") from e
+
+DIFFUSERS_MODULE = "OneActor.oa_diffusers"
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
 CUSTOM_PIPELINE_FILE_NAME = "pipeline.py"
-DUMMY_MODULES_FOLDER = "diffusers.utils"
+DUMMY_MODULES_FOLDER = "oa_diffusers.utils"
 TRANSFORMERS_DUMMY_MODULES_FOLDER = "transformers.utils"
 CONNECTED_PIPES_KEYS = ["prior"]
 
@@ -388,7 +395,7 @@ def _get_pipeline_class(
     if class_obj != DiffusionPipeline:
         return class_obj
 
-    diffusers_module = importlib.import_module(class_obj.__module__.split(".")[0])
+    diffusers_module = importlib.import_module(DIFFUSERS_MODULE)
     class_name = config["_class_name"]
     class_name = class_name[4:] if class_name.startswith("Flax") else class_name
 
@@ -468,7 +475,7 @@ def load_sub_model(
     load_method = getattr(class_obj, load_method_name)
 
     # add kwargs to loading method
-    diffusers_module = importlib.import_module(__name__.split(".")[0])
+    diffusers_module = importlib.import_module(DIFFUSERS_MODULE)
     loading_kwargs = {}
     if issubclass(class_obj, torch.nn.Module):
         loading_kwargs["torch_dtype"] = torch_dtype
@@ -557,7 +564,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
     def register_modules(self, **kwargs):
         # import it here to avoid circular import
-        diffusers_module = importlib.import_module(__name__.split(".")[0])
+        diffusers_module = importlib.import_module(DIFFUSERS_MODULE)
         pipelines = getattr(diffusers_module, "pipelines")
 
         for name, module in kwargs.items():
@@ -1062,6 +1069,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         >>> pipeline.scheduler = scheduler
         ```
         """
+
         cache_dir = kwargs.pop("cache_dir", None)
         resume_download = kwargs.pop("resume_download", False)
         force_download = kwargs.pop("force_download", False)
@@ -1158,7 +1166,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         if pipeline_class.__name__ == "StableDiffusionInpaintPipeline" and version.parse(
             version.parse(config_dict["_diffusers_version"]).base_version
         ) <= version.parse("0.5.1"):
-            from diffusers import StableDiffusionInpaintPipeline, StableDiffusionInpaintPipelineLegacy
+            from OneActor.oa_diffusers import StableDiffusionInpaintPipeline, StableDiffusionInpaintPipelineLegacy
 
             pipeline_class = StableDiffusionInpaintPipelineLegacy
 
@@ -1245,7 +1253,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
 
         # import it here to avoid circular import
-        from diffusers import pipelines
+        from OneActor.oa_diffusers import pipelines
 
         # 6. Load each module in the pipeline
         for name, (library_name, class_name) in logging.tqdm(init_dict.items(), desc="Loading pipeline components..."):
@@ -1680,7 +1688,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             filenames = {sibling.rfilename for sibling in info.siblings}
             model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
 
-            diffusers_module = importlib.import_module(__name__.split(".")[0])
+            diffusers_module = importlib.import_module(DIFFUSERS_MODULE)
             pipelines = getattr(diffusers_module, "pipelines")
 
             # optionally create a custom component <> custom file mapping
@@ -1871,7 +1879,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             cls_name = cls.load_config(os.path.join(cached_folder, "model_index.json")).get("_class_name", None)
             cls_name = cls_name[4:] if isinstance(cls_name, str) and cls_name.startswith("Flax") else cls_name
 
-            diffusers_module = importlib.import_module(__name__.split(".")[0])
+            diffusers_module = importlib.import_module(DIFFUSERS_MODULE)
             pipeline_class = getattr(diffusers_module, cls_name, None) if isinstance(cls_name, str) else None
 
             if pipeline_class is not None and pipeline_class._load_connected_pipes:
