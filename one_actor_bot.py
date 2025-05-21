@@ -23,7 +23,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from time import sleep
 import uuid
 
-API_TOKEN = '7552786080:AAEiKMsAUkoV3U84w02e9ZHLHxtK9pGqvuI'
+API_TOKEN = 'YOUT_TOKEN'
 
 CREATE_CHARACTER = "Create character"
 SHOW_CHARACTERS = "Show characters"
