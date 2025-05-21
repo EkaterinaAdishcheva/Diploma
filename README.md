@@ -10,3 +10,14 @@ bash install_scripts/runpod_install_dreamsim.sh
 ```
 bash test_scripts/script.sh config/prompt-adventurer.yaml adventurer
 ```
+
+## 🤖 TelegramBot
+```
+python one_actor_bot.py
+```
+
+
+## 🔗 Links
+**OneActor** https://github.com/JoHnneyWang/OneActor
+
+**ConsiStory** https://github.com/NVlabs/consistory
