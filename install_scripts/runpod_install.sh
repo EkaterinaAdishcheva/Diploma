@@ -6,8 +6,8 @@ cp /workspace/.ssh/* /root/.ssh/
 chmod 400 /root/.ssh/id_rsa.pub
 chmod 400 /root/.ssh/id_rsa
 
-git config --global user.email "e***a@example.com"
-git config --global user.name "Ekaterina Adishcheva"
+git config --global user.email "your_email@example.com"
+git config --global user.name "Your Name"
 
-export WANDB_API_KEY="16c91bc3767f14563f500e1342430f71c8b26518"
+export WANDB_API_KEY="YOUR_KEY"
 cat .ssh/id_rsa.pub
